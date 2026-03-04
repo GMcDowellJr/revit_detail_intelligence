@@ -148,6 +148,16 @@ def _safe_name(obj, fallback="<none>"):
 def _safe_type_name(element, fallback="<none>"):
     if element is None:
         return fallback
+
+    if isinstance(element, FamilyInstance):
+        try:
+            if element.Symbol is not None:
+                n = _safe_name(element.Symbol, fallback=fallback)
+                if n and n != fallback:
+                    return n
+        except Exception:
+            pass
+
     try:
         typ = element.Document.GetElement(element.GetTypeId())
         name = _safe_name(typ, fallback=fallback)
@@ -256,6 +266,24 @@ def _geometry_summary_for_element(element, view=None):
     }
 
 
+def token_assignment_policy():
+    return {
+        "DETAIL_MODEL": {
+            "category": "token = 'category:' + element category name",
+            "type_sig": "token = 'type_sig:' + family|type signature",
+        },
+        "DETAIL_DRAFTING_OR_DRAFTING": {
+            "FamilyInstance": "token = 'detail_component:' + family|type signature",
+            "FilledRegion": "token = 'fill_region:' + filled region name",
+            "Dimension": "token = 'dim_style:' + dimension style name",
+            "TextNote": "token = 'text_type:' + text type name",
+            "CurveElement": "token = 'line_style:' + line style name",
+            "Unmapped annotation": "no token (reported in collected_info.reason)",
+        },
+        "weights_by_kind": dict(CONFIG["token_weights_by_kind"]),
+    }
+
+
 def _token_weight(kind):
     return CONFIG["token_weights_by_kind"].get(kind, 1.0)
 
@@ -331,15 +359,24 @@ def get_annotation_elements(view):
 def type_signature(element):
     doc = element.Document
     type_name = "<no-type>"
-    try:
-        typ = doc.GetElement(element.GetTypeId())
-        type_name = _safe_name(typ)
-    except Exception:
-        pass
+
+    if isinstance(element, FamilyInstance):
+        try:
+            if element.Symbol is not None:
+                type_name = _safe_name(element.Symbol, fallback=type_name)
+        except Exception:
+            pass
+
+    if type_name == "<no-type>":
+        try:
+            typ = doc.GetElement(element.GetTypeId())
+            type_name = _safe_name(typ, fallback=type_name)
+        except Exception:
+            pass
 
     fam_name = "<no-family>"
     if isinstance(element, FamilyInstance) and element.Symbol is not None:
-        fam_name = _safe_name(element.Symbol.Family)
+        fam_name = _safe_name(element.Symbol.Family, fallback=fam_name)
     return "{}|{}".format(fam_name, type_name)
 
 
@@ -349,17 +386,44 @@ def family_type_sig(annotation_element):
 
 def get_2d_curves_in_view(view, only_model_intersections=False):
     # Practical Dynamo/Revit implementation:
-    # - Collect view-owned detail curves
-    # - Add model curves visible in the view when requested
+    # - Collect view-owned detail/model curves
+    # - For drafting/annotation contexts also include curves from detail components
+    #   and filled regions so fingerprint geometry is not line-only.
     curves = []
+    seen_curve_ids = set()
+
     for e in get_view_elements(view):
         if isinstance(e, CurveElement):
-            if only_model_intersections:
-                if isinstance(e, (DetailCurve, DetailLine)):
-                    continue
-            c = e.GeometryCurve
+            if only_model_intersections and isinstance(e, (DetailCurve, DetailLine)):
+                continue
+            try:
+                c = e.GeometryCurve
+            except Exception:
+                c = None
             if c is not None:
                 curves.append(c)
+            continue
+
+        if only_model_intersections:
+            continue
+
+        if isinstance(e, (FamilyInstance, FilledRegion)):
+            for c in _element_geometry_curves(e, view=view):
+                key = None
+                try:
+                    p0 = c.GetEndPoint(0)
+                    p1 = c.GetEndPoint(1)
+                    key = (
+                        round(p0.X, 6), round(p0.Y, 6), round(p0.Z, 6),
+                        round(p1.X, 6), round(p1.Y, 6), round(p1.Z, 6),
+                    )
+                except Exception:
+                    pass
+                if key is None or key not in seen_curve_ids:
+                    curves.append(c)
+                    if key is not None:
+                        seen_curve_ids.add(key)
+
     return curves
 
 
@@ -599,6 +663,8 @@ def _collect_token_data_for_view(view, kind, tokens=None, include_element_report
 
         if include_element_report:
             geom_summary = _geometry_summary_for_element(element, view=view)
+            if geom_summary.get("curve_count", 0) == 0:
+                geom_summary["note"] = "No extractable curves from element geometry in current view/context"
             row = _element_base_info(element)
             row.update(
                 {
@@ -787,6 +853,7 @@ def sample_view_fingerprints(views, sample_size, seed=0):
                 "debug": feat.debug,
                 "collected_elements": element_report,
                 "collection_summary": collection_summary,
+                "token_assignment_policy": token_assignment_policy(),
             }
         )
 
