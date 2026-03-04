@@ -11,7 +11,7 @@ Inputs (Dynamo IN):
 
 Output (OUT):
 - similarity mode: list[dict] sorted by descending similarity score.
-- sampling mode: list[dict] fingerprint report for each sampled view, including collected element-level details.
+- sampling mode: list[dict] fingerprint report for each sampled view, including collected element-level details and summary counts.
 """
 
 import math
@@ -141,6 +141,28 @@ def _safe_name(obj, fallback="<none>"):
         return obj.Name if obj is not None else fallback
     except Exception:
         return fallback
+
+
+def _safe_type_name(element, fallback="<none>"):
+    if element is None:
+        return fallback
+    try:
+        typ = element.Document.GetElement(element.GetTypeId())
+        name = _safe_name(typ, fallback=fallback)
+        return name if name else fallback
+    except Exception:
+        return fallback
+
+
+def _class_name(element):
+    try:
+        return element.GetType().Name
+    except Exception:
+        return "<unknown-class>"
+
+
+def _increment(counter, key, amount=1):
+    counter[key] = counter.get(key, 0) + amount
 
 
 def _token_weight(kind):
@@ -454,7 +476,7 @@ def explain_match(q, c):
 def _element_base_info(element):
     return {
         "element_id": getattr(getattr(element, "Id", None), "IntegerValue", None),
-        "class_name": getattr(getattr(element, "GetType", lambda: None)(), "Name", None),
+        "class_name": _class_name(element),
         "category": _safe_name(getattr(element, "Category", None), fallback="<none>"),
     }
 
@@ -462,6 +484,38 @@ def _element_base_info(element):
 def _collect_token_data_for_view(view, kind, tokens=None, include_element_report=False):
     token_store = tokens if tokens is not None else defaultdict(float)
     element_report = []
+    summary = {
+        "elements_seen_total": 0,
+        "elements_collected_total": 0,
+        "elements_with_tokens": 0,
+        "elements_without_tokens": 0,
+        "count_by_collection_group": {},
+        "count_by_class_name": {},
+    }
+
+    def record_row(element, group, info, added_tokens, collected=True):
+        _increment(summary, "elements_seen_total")
+        if collected:
+            _increment(summary, "elements_collected_total")
+        _increment(summary["count_by_collection_group"], group)
+        class_name = _class_name(element)
+        _increment(summary["count_by_class_name"], class_name)
+
+        if added_tokens:
+            _increment(summary, "elements_with_tokens")
+        else:
+            _increment(summary, "elements_without_tokens")
+
+        if include_element_report:
+            row = _element_base_info(element)
+            row.update(
+                {
+                    "collection_group": group,
+                    "collected": bool(collected),
+                    "collected_info": dict(info, tokens_added=added_tokens),
+                }
+            )
+            element_report.append(row)
 
     if kind == "DETAIL_MODEL":
         for e in get_model_elements_contributing_to_view(view):
@@ -471,73 +525,75 @@ def _collect_token_data_for_view(view, kind, tokens=None, include_element_report
             type_token = "type_sig:" + type_sig
             _add_token(token_store, category_token, "category")
             _add_token(token_store, type_token, "type_sig")
-            if include_element_report:
-                row = _element_base_info(e)
-                row.update(
-                    {
-                        "collection_group": "model_elements",
-                        "collected_info": {
-                            "category_name": cat_name,
-                            "type_signature": type_sig,
-                            "tokens_added": [category_token, type_token],
-                        },
-                    }
-                )
-                element_report.append(row)
+            record_row(
+                e,
+                "model_elements",
+                {"category_name": cat_name, "type_signature": type_sig},
+                [category_token, type_token],
+                collected=True,
+            )
     else:
         for a in get_annotation_elements(view):
             added_tokens = []
             info = {}
-            group = "annotation_elements"
+            group = "annotation_elements_unmapped"
+
             if isinstance(a, FamilyInstance):
                 value = family_type_sig(a)
                 token = "detail_component:" + value
                 _add_token(token_store, token, "detail_component")
                 added_tokens.append(token)
                 info["detail_component_sig"] = value
+                info["element_type_name"] = _safe_type_name(a)
+                group = "annotation_detail_components"
             elif isinstance(a, FilledRegion):
                 value = _safe_name(a)
                 token = "fill_region:" + value
                 _add_token(token_store, token, "fill_region")
                 added_tokens.append(token)
                 info["fill_region_name"] = value
+                group = "annotation_filled_regions"
             elif isinstance(a, Dimension):
                 value = _safe_name(a.DimensionType)
                 token = "dim_style:" + value
                 _add_token(token_store, token, "dim_style")
                 added_tokens.append(token)
                 info["dimension_style"] = value
+                info["dimension_type_name"] = _safe_type_name(a)
+                group = "annotation_dimensions"
             elif isinstance(a, TextNote):
                 value = _safe_name(a.TextNoteType)
                 token = "text_type:" + value
                 _add_token(token_store, token, "text_type")
                 added_tokens.append(token)
                 info["text_type"] = value
+                info["text_type_name"] = _safe_type_name(a)
+                group = "annotation_text_notes"
             elif isinstance(a, (DetailCurve, DetailLine, CurveElement)):
                 value = _safe_name(a.LineStyle)
                 token = "line_style:" + value
                 _add_token(token_store, token, "line_style")
                 added_tokens.append(token)
                 info["line_style"] = value
-            else:
-                group = "annotation_elements_unmapped"
+                group = "annotation_lines"
 
-            if include_element_report:
-                row = _element_base_info(a)
-                row.update(
-                    {
-                        "collection_group": group,
-                        "collected_info": dict(info, tokens_added=added_tokens),
-                    }
-                )
-                element_report.append(row)
+            if not added_tokens:
+                info["reason"] = "annotation element is not mapped to a token strategy"
 
-    return dict(token_store), element_report
+            record_row(
+                a,
+                group,
+                info,
+                added_tokens,
+                collected=True,
+            )
+
+    return dict(token_store), element_report, summary
 
 
 def extract_features(view):
     kind = classify_view_kind(view)
-    tokens, _ = _collect_token_data_for_view(view, kind, include_element_report=False)
+    tokens, _, _ = _collect_token_data_for_view(view, kind, include_element_report=False)
 
     curves = get_2d_curves_in_view(view, only_model_intersections=(kind == "DETAIL_MODEL"))
     pts = endpoints_from_curves(curves)
@@ -628,7 +684,7 @@ def sample_view_fingerprints(views, sample_size, seed=0):
     report = []
     for v in sampled:
         feat = extract_features(v)
-        _, element_report = _collect_token_data_for_view(v, feat.view_kind, include_element_report=True)
+        _, element_report, collection_summary = _collect_token_data_for_view(v, feat.view_kind, include_element_report=True)
         report.append(
             {
                 "view_id": feat.view_id,
@@ -639,6 +695,7 @@ def sample_view_fingerprints(views, sample_size, seed=0):
                 "fine_metrics": feat.fine_metrics,
                 "debug": feat.debug,
                 "collected_elements": element_report,
+                "collection_summary": collection_summary,
             }
         )
 
