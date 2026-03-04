@@ -1,33 +1,64 @@
-# Architecture Diagram
+# System Architecture
 
 ```mermaid
 flowchart TD
 
+%% INPUT
 A[User selects exterior wall face]
 
-A --> B[Scan facade band]
-B --> C[Generate candidate section locations]
+%% MODEL ANALYSIS LAYER
+subgraph Model Analysis
+B[Scan facade band]
+C[Generate candidate section locations]
+D[Create section views]
+E[Extract geometry from elements intersecting section plane]
+F[Cluster endpoints into detail regions]
+end
 
-C --> D[Create section view]
-D --> E[Extract curves from model elements intersecting the section plane]
+%% FEATURE EXTRACTION LAYER
+subgraph Feature Extraction
+G[Extract semantic tokens<br/>category type context]
+H[Build geometry fingerprint<br/>normalized edge patterns]
+I[Assemble feature vector]
+end
 
-E --> F[Collect curve endpoints]
-F --> G[Cluster endpoints into candidate detail regions]
+%% DETAIL INDEX
+subgraph Detail Index
+J[Index project details]
+K[Index library drafting views]
+end
 
-G --> H[Extract semantic tokens: category, type, context]
-G --> I[Build geometry fingerprint: normalized length and angle histograms]
+%% SIMILARITY ENGINE
+subgraph Similarity Engine
+L[Compute similarity scores]
+M[Rank candidate matches]
+end
 
-H --> J[Assemble feature vector]
-I --> J
+%% OUTPUT
+subgraph Output
+N[High confidence reuse]
+O[Similar detail candidates]
+P[New detail likely required]
+end
 
-J --> K[Compare against indexed project details]
-J --> L[Compare against indexed library drafting views]
+A --> B
+B --> C
+C --> D
+D --> E
+E --> F
 
-K --> M[Compute similarity scores]
+F --> G
+F --> H
+
+G --> I
+H --> I
+
+I --> L
+J --> L
+K --> L
+
 L --> M
 
-M --> N[Rank matches]
-
-N --> O[High confidence: reuse existing detail]
-N --> P[Medium confidence: similar detail candidate]
-N --> Q[Low confidence: new detail likely required]
+M --> N
+M --> O
+M --> P
