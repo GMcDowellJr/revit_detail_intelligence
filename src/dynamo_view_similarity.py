@@ -11,7 +11,7 @@ Inputs (Dynamo IN):
 
 Output (OUT):
 - similarity mode: list[dict] sorted by descending similarity score.
-- sampling mode: list[dict] fingerprint report for each sampled view.
+- sampling mode: list[dict] fingerprint report for each sampled view, including collected element-level details.
 """
 
 import math
@@ -451,28 +451,93 @@ def explain_match(q, c):
     }
 
 
-def extract_features(view):
-    kind = classify_view_kind(view)
-    tokens = defaultdict(float)
+def _element_base_info(element):
+    return {
+        "element_id": getattr(getattr(element, "Id", None), "IntegerValue", None),
+        "class_name": getattr(getattr(element, "GetType", lambda: None)(), "Name", None),
+        "category": _safe_name(getattr(element, "Category", None), fallback="<none>"),
+    }
+
+
+def _collect_token_data_for_view(view, kind, tokens=None, include_element_report=False):
+    token_store = tokens if tokens is not None else defaultdict(float)
+    element_report = []
 
     if kind == "DETAIL_MODEL":
         for e in get_model_elements_contributing_to_view(view):
             cat_name = _safe_name(e.Category, "<no-category>")
-            _add_token(tokens, "category:" + cat_name, "category")
-            _add_token(tokens, "type_sig:" + type_signature(e), "type_sig")
+            type_sig = type_signature(e)
+            category_token = "category:" + cat_name
+            type_token = "type_sig:" + type_sig
+            _add_token(token_store, category_token, "category")
+            _add_token(token_store, type_token, "type_sig")
+            if include_element_report:
+                row = _element_base_info(e)
+                row.update(
+                    {
+                        "collection_group": "model_elements",
+                        "collected_info": {
+                            "category_name": cat_name,
+                            "type_signature": type_sig,
+                            "tokens_added": [category_token, type_token],
+                        },
+                    }
+                )
+                element_report.append(row)
     else:
         for a in get_annotation_elements(view):
+            added_tokens = []
+            info = {}
+            group = "annotation_elements"
             if isinstance(a, FamilyInstance):
-                _add_token(tokens, "detail_component:" + family_type_sig(a), "detail_component")
+                value = family_type_sig(a)
+                token = "detail_component:" + value
+                _add_token(token_store, token, "detail_component")
+                added_tokens.append(token)
+                info["detail_component_sig"] = value
             elif isinstance(a, FilledRegion):
-                _add_token(tokens, "fill_region:" + _safe_name(a), "fill_region")
+                value = _safe_name(a)
+                token = "fill_region:" + value
+                _add_token(token_store, token, "fill_region")
+                added_tokens.append(token)
+                info["fill_region_name"] = value
             elif isinstance(a, Dimension):
-                _add_token(tokens, "dim_style:" + _safe_name(a.DimensionType), "dim_style")
+                value = _safe_name(a.DimensionType)
+                token = "dim_style:" + value
+                _add_token(token_store, token, "dim_style")
+                added_tokens.append(token)
+                info["dimension_style"] = value
             elif isinstance(a, TextNote):
-                _add_token(tokens, "text_type:" + _safe_name(a.TextNoteType), "text_type")
+                value = _safe_name(a.TextNoteType)
+                token = "text_type:" + value
+                _add_token(token_store, token, "text_type")
+                added_tokens.append(token)
+                info["text_type"] = value
             elif isinstance(a, (DetailCurve, DetailLine, CurveElement)):
-                style = _safe_name(a.LineStyle)
-                _add_token(tokens, "line_style:" + style, "line_style")
+                value = _safe_name(a.LineStyle)
+                token = "line_style:" + value
+                _add_token(token_store, token, "line_style")
+                added_tokens.append(token)
+                info["line_style"] = value
+            else:
+                group = "annotation_elements_unmapped"
+
+            if include_element_report:
+                row = _element_base_info(a)
+                row.update(
+                    {
+                        "collection_group": group,
+                        "collected_info": dict(info, tokens_added=added_tokens),
+                    }
+                )
+                element_report.append(row)
+
+    return dict(token_store), element_report
+
+
+def extract_features(view):
+    kind = classify_view_kind(view)
+    tokens, _ = _collect_token_data_for_view(view, kind, include_element_report=False)
 
     curves = get_2d_curves_in_view(view, only_model_intersections=(kind == "DETAIL_MODEL"))
     pts = endpoints_from_curves(curves)
@@ -563,6 +628,7 @@ def sample_view_fingerprints(views, sample_size, seed=0):
     report = []
     for v in sampled:
         feat = extract_features(v)
+        _, element_report = _collect_token_data_for_view(v, feat.view_kind, include_element_report=True)
         report.append(
             {
                 "view_id": feat.view_id,
@@ -572,6 +638,7 @@ def sample_view_fingerprints(views, sample_size, seed=0):
                 "geom_fingerprint": feat.geom_fingerprint,
                 "fine_metrics": feat.fine_metrics,
                 "debug": feat.debug,
+                "collected_elements": element_report,
             }
         )
 
