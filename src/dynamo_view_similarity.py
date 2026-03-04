@@ -11,7 +11,7 @@ Inputs (Dynamo IN):
 
 Output (OUT):
 - similarity mode: list[dict] sorted by descending similarity score.
-- sampling mode: list[dict] fingerprint report for each sampled view, including collected element-level details and summary counts.
+- sampling mode: list[dict] fingerprint report for each sampled view, including collected element-level details, geometry summaries, and summary counts.
 """
 
 import math
@@ -31,6 +31,8 @@ from Autodesk.Revit.DB import (
     FamilyInstance,
     FilledRegion,
     FilteredElementCollector,
+    GeometryInstance,
+    Options,
     TextNote,
     View,
     ViewType,
@@ -163,6 +165,95 @@ def _class_name(element):
 
 def _increment(counter, key, amount=1):
     counter[key] = counter.get(key, 0) + amount
+
+
+def _category_name(element):
+    return _safe_name(getattr(element, "Category", None), fallback="<none>")
+
+
+def _is_annotation_like(element):
+    cat = getattr(element, "Category", None)
+    if _category_type_label(cat) == "Annotation":
+        return True
+    # Fallback for hosts where category typing is unreliable.
+    if isinstance(element, (FamilyInstance, FilledRegion, Dimension, TextNote, CurveElement)):
+        return True
+    return False
+
+
+def _collect_curves_from_geometry(geom_obj, out_curves):
+    if geom_obj is None:
+        return
+    for g in geom_obj:
+        if g is None:
+            continue
+        try:
+            if hasattr(g, "AsCurve"):
+                c = g.AsCurve()
+                if c is not None:
+                    out_curves.append(c)
+                    continue
+        except Exception:
+            pass
+
+        if hasattr(g, "GetEndPoint"):
+            out_curves.append(g)
+            continue
+
+        if isinstance(g, GeometryInstance):
+            try:
+                _collect_curves_from_geometry(g.GetInstanceGeometry(), out_curves)
+            except Exception:
+                pass
+            try:
+                _collect_curves_from_geometry(g.GetSymbolGeometry(), out_curves)
+            except Exception:
+                pass
+
+
+def _element_geometry_curves(element, view=None):
+    curves = []
+
+    if isinstance(element, CurveElement):
+        try:
+            if element.GeometryCurve is not None:
+                curves.append(element.GeometryCurve)
+                return curves
+        except Exception:
+            pass
+
+    if isinstance(element, FilledRegion):
+        try:
+            loops = element.GetBoundaries()
+            for loop in loops:
+                for c in loop:
+                    curves.append(c)
+            if curves:
+                return curves
+        except Exception:
+            pass
+
+    try:
+        opts = Options()
+        if view is not None:
+            opts.View = view
+        geom = element.get_Geometry(opts)
+        _collect_curves_from_geometry(geom, curves)
+    except Exception:
+        pass
+
+    return curves
+
+
+def _geometry_summary_for_element(element, view=None):
+    curves = _element_geometry_curves(element, view=view)
+    pts = endpoints_from_curves(curves)
+    return {
+        "curve_count": len(curves),
+        "endpoint_count": len(pts),
+        "unique_endpoint_count": len(dedupe_points_by_grid(pts, CONFIG["tol_coord"])) if pts else 0,
+        "curve_total_length": sum(getattr(c, "Length", 0.0) for c in curves),
+    }
 
 
 def _token_weight(kind):
@@ -507,12 +598,14 @@ def _collect_token_data_for_view(view, kind, tokens=None, include_element_report
             _increment(summary, "elements_without_tokens")
 
         if include_element_report:
+            geom_summary = _geometry_summary_for_element(element, view=view)
             row = _element_base_info(element)
             row.update(
                 {
                     "collection_group": group,
                     "collected": bool(collected),
                     "collected_info": dict(info, tokens_added=added_tokens),
+                    "geometry_summary": geom_summary,
                 }
             )
             element_report.append(row)
@@ -533,7 +626,10 @@ def _collect_token_data_for_view(view, kind, tokens=None, include_element_report
                 collected=True,
             )
     else:
-        for a in get_annotation_elements(view):
+        for a in get_view_elements(view):
+            if not _is_annotation_like(a):
+                continue
+
             added_tokens = []
             info = {}
             group = "annotation_elements_unmapped"
@@ -579,14 +675,9 @@ def _collect_token_data_for_view(view, kind, tokens=None, include_element_report
 
             if not added_tokens:
                 info["reason"] = "annotation element is not mapped to a token strategy"
+                info["category_name"] = _category_name(a)
 
-            record_row(
-                a,
-                group,
-                info,
-                added_tokens,
-                collected=True,
-            )
+            record_row(a, group, info, added_tokens, collected=True)
 
     return dict(token_store), element_report, summary
 
