@@ -93,7 +93,7 @@ src/
 - implementation code
 
 examples/
--sample inputs and outputs
+- sample inputs and outputs
 
 ---
 
