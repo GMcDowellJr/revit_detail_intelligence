@@ -53,6 +53,8 @@ CONFIG = {
     "ang_bins_deg": [0, 15, 30, 45, 60, 75, 90, 105, 120, 135, 150, 165, 180],
     "tol_coord": 1.0 / 256.0,  # feet
     "weights": {"w_tokens": 0.55, "w_geom": 0.35, "w_fine": 0.10},
+    "low_semantic_weights": {"w_tokens": 0.20, "w_geom": 0.70, "w_fine": 0.10},
+    "min_token_threshold": 4,
     "confidence_thresholds": {"HIGH_min": 0.85, "MED_min": 0.65},
     "token_weights_by_kind": {
         "category": 1.0,
@@ -65,6 +67,7 @@ CONFIG = {
     },
 }
 EPS = 1e-9
+TOKEN_STOPWORDS = {"<none>", "<no-type>", "", "default", "none", "n/a"}
 
 
 class ViewFeatures(object):
@@ -146,24 +149,8 @@ def _safe_name(obj, fallback="<none>"):
 
 
 def _safe_type_name(element, fallback="<none>"):
-    if element is None:
-        return fallback
-
-    if isinstance(element, FamilyInstance):
-        try:
-            if element.Symbol is not None:
-                n = _safe_name(element.Symbol, fallback=fallback)
-                if n and n != fallback:
-                    return n
-        except Exception:
-            pass
-
-    try:
-        typ = element.Document.GetElement(element.GetTypeId())
-        name = _safe_name(typ, fallback=fallback)
-        return name if name else fallback
-    except Exception:
-        return fallback
+    type_name = _resolve_type_name(element, fallback=fallback)
+    return type_name if is_valid_token_value(type_name) else fallback
 
 
 def _class_name(element):
@@ -281,7 +268,24 @@ def token_assignment_policy():
             "Unmapped annotation": "no token (reported in collected_info.reason)",
         },
         "weights_by_kind": dict(CONFIG["token_weights_by_kind"]),
+        "stopword_values": sorted(TOKEN_STOPWORDS),
     }
+
+
+def is_valid_token_value(value):
+    txt = "" if value is None else str(value).strip()
+    if not txt:
+        return False
+    if txt.lower() in TOKEN_STOPWORDS:
+        return False
+    return True
+
+
+def _signature_parts_are_valid(signature):
+    if "|" not in signature:
+        return is_valid_token_value(signature)
+    left, right = signature.split("|", 1)
+    return is_valid_token_value(left) and is_valid_token_value(right)
 
 
 def _token_weight(kind):
@@ -290,6 +294,17 @@ def _token_weight(kind):
 
 def _add_token(tokens, token, kind):
     tokens[token] += _token_weight(kind)
+
+
+def _emit_token(tokens, prefix, value, kind):
+    value_txt = "" if value is None else str(value).strip()
+    if not is_valid_token_value(value_txt):
+        return None
+    if prefix in ("detail_component", "type_sig") and not _signature_parts_are_valid(value_txt):
+        return None
+    token = "{}:{}".format(prefix, value_txt)
+    _add_token(tokens, token, kind)
+    return token
 
 
 def _category_type_label(category):
@@ -356,23 +371,29 @@ def get_annotation_elements(view):
     return elems
 
 
+def _resolve_type_name(element, fallback="<unknown-type>"):
+    if element is None:
+        return fallback
+
+    doc = getattr(element, "Document", None)
+    if doc is None:
+        return fallback
+
+    try:
+        type_id = element.GetTypeId()
+        if type_id is not None and type_id != ElementId.InvalidElementId:
+            type_elem = doc.GetElement(type_id)
+            type_name = _safe_name(type_elem, fallback=fallback)
+            if is_valid_token_value(type_name):
+                return type_name
+    except Exception:
+        pass
+
+    return fallback
+
+
 def type_signature(element):
-    doc = element.Document
-    type_name = "<no-type>"
-
-    if isinstance(element, FamilyInstance):
-        try:
-            if element.Symbol is not None:
-                type_name = _safe_name(element.Symbol, fallback=type_name)
-        except Exception:
-            pass
-
-    if type_name == "<no-type>":
-        try:
-            typ = doc.GetElement(element.GetTypeId())
-            type_name = _safe_name(typ, fallback=type_name)
-        except Exception:
-            pass
+    type_name = _resolve_type_name(element, fallback="<unknown-type>")
 
     fam_name = "<no-family>"
     if isinstance(element, FamilyInstance) and element.Symbol is not None:
@@ -582,18 +603,49 @@ def gaussian_sim(x, y, sigma=0.5):
     return math.exp(-(d * d) / (2.0 * sigma * sigma))
 
 
-def token_similarity(tokens_a, tokens_b):
+def build_token_df(corpus_views):
+    token_df = defaultdict(int)
+    clean = [v for v in corpus_views if isinstance(v, View)]
+    for v in clean:
+        feat = extract_features(v)
+        for t in feat.tokens.keys():
+            token_df[t] += 1
+    return dict(token_df), len(clean)
+
+
+def _build_token_idf(token_df, doc_count):
+    n = max(1, int(doc_count))
+    idf = {}
+    for token, df in token_df.items():
+        if df <= 0:
+            continue
+        idf[token] = math.log(float(n) / float(df))
+    return idf
+
+
+def token_similarity(tokens_a, tokens_b, token_idf=None, default_idf=1.0):
     keys = set(tokens_a.keys()) | set(tokens_b.keys())
     if not keys:
         return 0.0
+    idf_map = token_idf or {}
     num = 0.0
     den = 0.0
     for k in keys:
         a = tokens_a.get(k, 0.0)
         b = tokens_b.get(k, 0.0)
-        num += min(a, b)
-        den += max(a, b)
+        idf = idf_map.get(k, default_idf)
+        wa = a * idf
+        wb = b * idf
+        num += min(wa, wb)
+        den += max(wa, wb)
     return 0.0 if den <= EPS else num / den
+
+
+def _effective_weights(q, c):
+    min_tokens = int(CONFIG.get("min_token_threshold", 4))
+    if len(q.tokens) < min_tokens or len(c.tokens) < min_tokens:
+        return CONFIG.get("low_semantic_weights", CONFIG["weights"])
+    return CONFIG["weights"]
 
 
 def fine_similarity(fa, fb):
@@ -680,15 +732,13 @@ def _collect_token_data_for_view(view, kind, tokens=None, include_element_report
         for e in get_model_elements_contributing_to_view(view):
             cat_name = _safe_name(e.Category, "<no-category>")
             type_sig = type_signature(e)
-            category_token = "category:" + cat_name
-            type_token = "type_sig:" + type_sig
-            _add_token(token_store, category_token, "category")
-            _add_token(token_store, type_token, "type_sig")
+            category_emitted = _emit_token(token_store, "category", cat_name, "category")
+            type_emitted = _emit_token(token_store, "type_sig", type_sig, "type_sig")
             record_row(
                 e,
                 "model_elements",
                 {"category_name": cat_name, "type_signature": type_sig},
-                [category_token, type_token],
+                [t for t in (category_emitted, type_emitted) if t],
                 collected=True,
             )
     else:
@@ -702,45 +752,45 @@ def _collect_token_data_for_view(view, kind, tokens=None, include_element_report
 
             if isinstance(a, FamilyInstance):
                 value = family_type_sig(a)
-                token = "detail_component:" + value
-                _add_token(token_store, token, "detail_component")
-                added_tokens.append(token)
+                emitted = _emit_token(token_store, "detail_component", value, "detail_component")
+                if emitted is not None:
+                    added_tokens.append(emitted)
                 info["detail_component_sig"] = value
                 info["element_type_name"] = _safe_type_name(a)
                 group = "annotation_detail_components"
             elif isinstance(a, FilledRegion):
                 value = _safe_name(a)
-                token = "fill_region:" + value
-                _add_token(token_store, token, "fill_region")
-                added_tokens.append(token)
+                emitted = _emit_token(token_store, "fill_region", value, "fill_region")
+                if emitted is not None:
+                    added_tokens.append(emitted)
                 info["fill_region_name"] = value
                 group = "annotation_filled_regions"
             elif isinstance(a, Dimension):
                 value = _safe_name(a.DimensionType)
-                token = "dim_style:" + value
-                _add_token(token_store, token, "dim_style")
-                added_tokens.append(token)
+                emitted = _emit_token(token_store, "dim_style", value, "dim_style")
+                if emitted is not None:
+                    added_tokens.append(emitted)
                 info["dimension_style"] = value
                 info["dimension_type_name"] = _safe_type_name(a)
                 group = "annotation_dimensions"
             elif isinstance(a, TextNote):
                 value = _safe_name(a.TextNoteType)
-                token = "text_type:" + value
-                _add_token(token_store, token, "text_type")
-                added_tokens.append(token)
+                emitted = _emit_token(token_store, "text_type", value, "text_type")
+                if emitted is not None:
+                    added_tokens.append(emitted)
                 info["text_type"] = value
                 info["text_type_name"] = _safe_type_name(a)
                 group = "annotation_text_notes"
             elif isinstance(a, (DetailCurve, DetailLine, CurveElement)):
                 value = _safe_name(a.LineStyle)
-                token = "line_style:" + value
-                _add_token(token_store, token, "line_style")
-                added_tokens.append(token)
+                emitted = _emit_token(token_store, "line_style", value, "line_style")
+                if emitted is not None:
+                    added_tokens.append(emitted)
                 info["line_style"] = value
                 group = "annotation_lines"
 
             if not added_tokens:
-                info["reason"] = "annotation element is not mapped to a token strategy"
+                info["reason"] = "token filtered by stopword policy or element is not mapped to a token strategy"
                 info["category_name"] = _category_name(a)
 
             record_row(a, group, info, added_tokens, collected=True)
@@ -787,13 +837,20 @@ def find_similar_views(query_view, corpus_views, top_n=5):
     q = extract_features(query_view)
     corpus_feat = [extract_features(v) for v in corpus_views if isinstance(v, View) and v.Id != query_view.Id]
 
-    results = []
-    w = CONFIG["weights"]
+    token_df = defaultdict(int)
     for c in corpus_feat:
-        s_tokens = token_similarity(q.tokens, c.tokens)
+        for token in c.tokens.keys():
+            token_df[token] += 1
+    token_idf = _build_token_idf(token_df, len(corpus_feat))
+    default_idf = math.log(float(max(1, len(corpus_feat))))
+
+    results = []
+    for c in corpus_feat:
+        weights = _effective_weights(q, c)
+        s_tokens = token_similarity(q.tokens, c.tokens, token_idf=token_idf, default_idf=default_idf)
         s_geom = cosine_similarity(q.geom_fingerprint, c.geom_fingerprint)
         s_fine = fine_similarity(q.fine_metrics, c.fine_metrics)
-        s_total = w["w_tokens"] * s_tokens + w["w_geom"] * s_geom + w["w_fine"] * s_fine
+        s_total = weights["w_tokens"] * s_tokens + weights["w_geom"] * s_geom + weights["w_fine"] * s_fine
         results.append(
             {
                 "candidate_view_id": c.view_id,
