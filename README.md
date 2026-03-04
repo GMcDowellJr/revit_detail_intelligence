@@ -1,154 +1,133 @@
-# Python Project Template — CI + Guardrails
+# Revit Detail Intelligence
 
-This repository is a **starter template** for Python projects that want:
-- automated quality checks from day one
-- fast local iteration
-- early detection of error-handling and semantic drift issues
+## Overview
 
-It is intentionally **minimal and opinionated**.
+Revit Detail Intelligence explores a deterministic method for identifying construction conditions within a model and suggesting relevant construction details based on structural similarity.
 
----
+Rather than relying on visual inspection of drawings, the system analyzes the geometry produced where model elements intersect a section plane. From this geometry it derives simplified structural signatures that can be compared across details and drafting views. The goal is to identify when two conditions are essentially the same—even if their dimensions vary slightly—and surface opportunities to reuse existing project or library details.
 
-## What this template guarantees
-
-From the first commit:
-
-- ✅ **Continuous Integration (CI)** runs on every push and pull request
-- ✅ **Linting** catches common correctness and robustness issues
-- ✅ **Tests** must pass before code can be merged
-- ✅ Rules are **explicit, versioned, and automated**
-- ✅ “Works on my machine” failures are reduced by clean CI environments
-
-This template focuses on **how code is merged**, not what the code does.
+The system is intended as **decision support**, not automation. It highlights candidate sections, identifies areas likely requiring detailing, and suggests similar details with explainable confidence.
 
 ---
 
-## What this template does *not* guarantee
+## Problem
 
-- ❌ Correct algorithms or domain logic
-- ❌ Complete test coverage
-- ❌ Optimal performance
-- ❌ Freedom from design mistakes
+Large projects often contain many construction conditions that are repeated with minor variation. Designers typically locate details manually by browsing libraries or searching through project sheets. This process is:
 
-Those emerge during design and integration.  
-The goal here is to make problems **visible early and cheaply**, not to eliminate them magically.
+- time-consuming
+- inconsistent across teams
+- prone to duplication of similar details
 
----
-
-## Included tooling
-
-- **pytest** — automated tests
-- **ruff** — fast static analysis (linting)
-- **GitHub Actions** — CI execution
-- **pyproject.toml** — single source of tool configuration
-
-All tooling is optional to extend, but none is optional to bypass once enabled.
+There is currently no systematic way for the model to recognize that a construction condition is similar to one that has already been detailed.
 
 ---
 
-## Repository structure (baseline)
+## Approach
 
-- `.github/workflows/ci.yml`  
-  CI pipeline (lint + tests on PRs and pushes)
+The system analyzes section geometry and model context to build a feature-based description of a construction condition. These features are then compared against indexed details to find similar patterns.
 
-- `pyproject.toml`  
-  Tool configuration (ruff, pytest)
+Key principles:
 
-- `requirements-dev.txt`  
-  Development dependencies (testing, linting)
-
-- `tests/`  
-  Test suite (starts minimal; grows over time)
-
-- `CONTRIBUTING.md`  
-  Contribution and workflow rules
+- deterministic algorithms
+- explainable similarity metrics
+- tolerance for dimensional variation
+- independence from fragile view graphics
 
 ---
 
-## Local setup
+## Pipeline Summary
 
-Create and activate a virtual environment:
+1. **Section Candidate Generation**
 
-    python -m venv .venv
-    source .venv/Scripts/activate   # Windows (Git Bash)
-    python -m pip install --upgrade pip
-    pip install -r requirements-dev.txt
-    if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+   A user selects an exterior wall face.  
+   The system scans a narrow vertical band and identifies locations where construction conditions change.
 
-Run checks locally:
+2. **Section Geometry Extraction**
 
-    ruff check .
-    pytest
+   Geometry from model elements intersecting the section plane is collected.
 
-CI will run the same checks automatically.
+3. **Endpoint Clustering**
 
----
+   Line endpoints are grouped to identify regions of geometric complexity that likely require detailing.
 
-## Development workflow (expected)
+4. **Feature Extraction**
 
-1. Create a feature branch
-2. Make changes
-3. Run:
-   - ruff check .
-   - pytest
-4. Commit and push
-5. Open a pull request
-6. Merge only when CI is green
+   Each cluster is described using:
 
-If CI fails, the code is not ready to merge.
+   - semantic tokens (element categories and types)
+   - normalized geometric fingerprints
+   - optional fine-grained metrics
 
----
+5. **Detail Indexing**
 
-## Design philosophy
+   Existing details and drafting views are processed to produce the same feature representation.
 
-This template assumes:
+6. **Similarity Matching**
 
-- Bugs are cheaper to fix when found early
-- Silent failures are worse than loud ones
-- Inconsistency spreads unless actively constrained
-- Automation beats memory and good intentions
+   The system compares features and ranks other details according to structural similarity.
 
-It is designed to **support adversarial review**, not replace it.
+7. **Confidence Scoring**
+
+   Matches are categorized into:
+
+   - high confidence (likely the same condition)
+   - medium confidence (similar)
+   - low confidence (likely different)
 
 ---
 
-## When to extend this template
+## Repository Structure
 
-Add rules or tooling only when:
-- the same issue has appeared in multiple projects
-- the rule is clearly non-project-specific
-- the cost of enforcement is lower than the cost of drift
+docs/
+system-overview.md
+pipeline-architecture.md
+geometry-fingerprint.md
+similarity-matching.md
+detail-indexing.md
+calibration-and-validation.md
 
-Keep the template boring. Let projects be interesting.
+research/
+experiments and exploratory notes
 
----
+src/
+implementation code
 
-## Using this repository as a template
-
-This repository is intended to be marked as a **GitHub template repository**.
-New projects should be created from it rather than copied manually.
-
-Each new repository gets:
-- a fresh Git history
-- the same guardrails
-- freedom to evolve independently
+examples/
+sample inputs and outputs
 
 ---
 
-## Questions this template intentionally answers
+## Status
 
-- “How do we know code is safe to merge?”
-- “What runs automatically, and when?”
-- “What rules are non-negotiable?”
+Early research and prototype phase.
 
-Questions it intentionally does not answer:
+Current focus:
 
-- “Is this the best design?”
-- “Is this fast enough?”
-- “Is this the right abstraction?”
-
-Those belong to design and review—not scaffolding.
+- defining feature representations
+- validating similarity metrics
+- building deterministic geometry fingerprints
 
 ---
 
-If this README ever needs to explain *why* the rules exist, the template has already failed.
+## Non-Goals
+
+This project does not attempt to:
+
+- perform image recognition on drawings
+- automatically place details
+- replace design judgement
+
+---
+
+## Related Work
+
+This project complements other model analysis pipelines such as:
+
+- Revit Fingerprint (standards analysis)
+- View-on-Paper / Scope Stability Metrics
+
+---
+
+## License
+
+TBD
