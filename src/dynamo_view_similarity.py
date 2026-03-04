@@ -6,12 +6,16 @@ Inputs (Dynamo IN):
 - IN[0]: query view reference (DB.View, wrapped Dynamo View, ElementId/int, or single-item list)
 - IN[1]: corpus view references (list of the same supported formats)
 - IN[2]: topN (optional, default=5)
+- IN[3]: sampleN (optional). When provided, returns sampled fingerprint reports instead of similarity results.
+- IN[4]: sampleSeed (optional, default=0). Used only when IN[3] is provided.
 
 Output (OUT):
-- list[dict] sorted by descending similarity score.
+- similarity mode: list[dict] sorted by descending similarity score.
+- sampling mode: list[dict] fingerprint report for each sampled view.
 """
 
 import math
+import random
 from collections import defaultdict
 
 import clr
@@ -528,16 +532,67 @@ def find_similar_views(query_view, corpus_views, top_n=5):
     return results[: max(0, int(top_n))]
 
 
+def _view_label(view):
+    try:
+        return view.Name
+    except Exception:
+        return "<unknown>"
+
+
+def sample_view_fingerprints(views, sample_size, seed=0):
+    """
+    Sample a deterministic random subset of views and report each view fingerprint.
+
+    Fingerprints are produced by the same extract_features(...) strategy used in
+    similarity matching.
+    """
+    clean_views = [v for v in views if isinstance(v, View)]
+    if not clean_views:
+        return []
+
+    n = max(0, int(sample_size))
+    if n == 0:
+        return []
+
+    if n >= len(clean_views):
+        sampled = list(clean_views)
+    else:
+        rng = random.Random(int(seed))
+        sampled = rng.sample(clean_views, n)
+
+    report = []
+    for v in sampled:
+        feat = extract_features(v)
+        report.append(
+            {
+                "view_id": feat.view_id,
+                "view_name": _view_label(v),
+                "view_kind": feat.view_kind,
+                "tokens": feat.tokens,
+                "geom_fingerprint": feat.geom_fingerprint,
+                "fine_metrics": feat.fine_metrics,
+                "debug": feat.debug,
+            }
+        )
+
+    report.sort(key=lambda r: r["view_id"])
+    return report
+
+
 # Dynamo entrypoint
 doc = _current_doc()
 query_input = IN[0] if len(IN) > 0 else None
 corpus_input = IN[1] if len(IN) > 1 else []
 top_n = IN[2] if len(IN) > 2 and IN[2] is not None else 5
+sample_n = IN[3] if len(IN) > 3 else None
+sample_seed = IN[4] if len(IN) > 4 and IN[4] is not None else 0
 
 query_view = _coerce_view(query_input, fallback_doc=doc)
 corpus_views = _coerce_views(corpus_input, fallback_doc=doc)
 
-if query_view is None:
+if sample_n is not None:
+    OUT = sample_view_fingerprints(corpus_views, sample_n, seed=sample_seed)
+elif query_view is None:
     OUT = {
         "error": "IN[0] must resolve to a Revit DB.View (View, wrapped View, ElementId, int, or single-item list)."
     }
