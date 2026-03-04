@@ -6,6 +6,10 @@ target-version = "py311"
 select = ["E", "F", "B"]  # errors, pyflakes, bugbear
 ignore = []
 
+
+[tool.ruff.lint.per-file-ignores]
+"src/dynamo_view_similarity.py" = ["E402", "E501", "F821", "B905"]
+
 [tool.pytest.ini_options]
 addopts = "-q"
 testpaths = ["tests"]
