@@ -3,8 +3,8 @@ Dynamo (CPython3) script for Revit 2025.
 Feature-based similarity matching for detail / drafting views.
 
 Inputs (Dynamo IN):
-- IN[0]: query View (Autodesk.Revit.DB.View)
-- IN[1]: corpus Views (list[View])
+- IN[0]: query view reference (DB.View, wrapped Dynamo View, ElementId/int, or single-item list)
+- IN[1]: corpus view references (list of the same supported formats)
 - IN[2]: topN (optional, default=5)
 
 Output (OUT):
@@ -18,11 +18,11 @@ import clr
 
 clr.AddReference("RevitAPI")
 from Autodesk.Revit.DB import (
-    BuiltInCategory,
     CurveElement,
     DetailCurve,
     DetailLine,
     Dimension,
+    ElementId,
     FamilyInstance,
     FilledRegion,
     FilteredElementCollector,
@@ -30,6 +30,12 @@ from Autodesk.Revit.DB import (
     View,
     ViewType,
 )
+
+try:
+    clr.AddReference("RevitServices")
+    from RevitServices.Persistence import DocumentManager
+except Exception:
+    DocumentManager = None
 
 # -------------------------
 # CONFIG / POLICY (tunable)
@@ -62,6 +68,67 @@ class ViewFeatures(object):
         self.geom_fingerprint = geom_fingerprint
         self.fine_metrics = fine_metrics
         self.debug = debug or {}
+
+
+def _current_doc():
+    if DocumentManager is None:
+        return None
+    try:
+        return DocumentManager.Instance.CurrentDBDocument
+    except Exception:
+        return None
+
+
+def _first_item(value):
+    if isinstance(value, (list, tuple)):
+        if not value:
+            return None
+        return value[0]
+    return value
+
+
+def _unwrap_dynamo_element(value):
+    # Supports Revit.Elements wrappers in Dynamo CPython.
+    if value is None:
+        return None
+    try:
+        return value.InternalElement
+    except Exception:
+        return value
+
+
+def _coerce_view(value, fallback_doc=None):
+    """Accept View, wrapped Dynamo View, ElementId, int, or single-item list of those."""
+    candidate = _unwrap_dynamo_element(_first_item(value))
+
+    if isinstance(candidate, View):
+        return candidate
+
+    doc = fallback_doc or _current_doc()
+    if doc is None:
+        return None
+
+    if isinstance(candidate, ElementId):
+        elem = doc.GetElement(candidate)
+        return elem if isinstance(elem, View) else None
+
+    try:
+        elem = doc.GetElement(ElementId(int(candidate)))
+        return elem if isinstance(elem, View) else None
+    except Exception:
+        return None
+
+
+def _coerce_views(values, fallback_doc=None):
+    if values is None:
+        return []
+    seq = values if isinstance(values, list) else [values]
+    out = []
+    for v in seq:
+        view = _coerce_view(v, fallback_doc=fallback_doc)
+        if view is not None:
+            out.append(view)
+    return out
 
 
 def _safe_name(obj, fallback="<none>"):
@@ -437,13 +504,17 @@ def find_similar_views(query_view, corpus_views, top_n=5):
 
 
 # Dynamo entrypoint
-query_view = IN[0] if len(IN) > 0 else None
-corpus_views = IN[1] if len(IN) > 1 and IN[1] is not None else []
+doc = _current_doc()
+query_input = IN[0] if len(IN) > 0 else None
+corpus_input = IN[1] if len(IN) > 1 else []
 top_n = IN[2] if len(IN) > 2 and IN[2] is not None else 5
 
-if query_view is None or not isinstance(query_view, View):
-    OUT = {"error": "IN[0] must be a Revit View."}
+query_view = _coerce_view(query_input, fallback_doc=doc)
+corpus_views = _coerce_views(corpus_input, fallback_doc=doc)
+
+if query_view is None:
+    OUT = {
+        "error": "IN[0] must resolve to a Revit DB.View (View, wrapped View, ElementId, int, or single-item list)."
+    }
 else:
-    if not isinstance(corpus_views, list):
-        corpus_views = [corpus_views]
     OUT = find_similar_views(query_view, corpus_views, top_n)
