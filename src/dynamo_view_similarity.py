@@ -18,6 +18,7 @@ import clr
 
 clr.AddReference("RevitAPI")
 from Autodesk.Revit.DB import (
+    CategoryType,
     CurveElement,
     DetailCurve,
     DetailLine,
@@ -146,11 +147,35 @@ def _add_token(tokens, token, kind):
     tokens[token] += _token_weight(kind)
 
 
+def _category_type_label(category):
+    """Return a stable category type label across Revit Python hosts."""
+    if category is None:
+        return None
+
+    cat_type = getattr(category, "CategoryType", None)
+    if cat_type is None:
+        return None
+
+    # In some Dynamo CPython environments, enum values arrive as plain ints.
+    enum_by_int = {
+        int(CategoryType.Model): "Model",
+        int(CategoryType.Annotation): "Annotation",
+    }
+
+    try:
+        return enum_by_int.get(int(cat_type), str(cat_type))
+    except Exception:
+        try:
+            return cat_type.ToString()
+        except Exception:
+            return str(cat_type)
+
+
 def classify_view_kind(view):
     if view.ViewType == ViewType.DraftingView:
         return "DRAFTING"
     if view.ViewType in (ViewType.Detail, ViewType.Section, ViewType.Elevation):
-        has_model = any(not e.Category.CategoryType.ToString() == "Annotation" for e in get_view_elements(view))
+        has_model = any(_category_type_label(e.Category) != "Annotation" for e in get_view_elements(view))
         return "DETAIL_MODEL" if has_model else "DETAIL_DRAFTING"
     return "DETAIL_DRAFTING"
 
@@ -170,7 +195,7 @@ def get_model_elements_contributing_to_view(view):
         cat = e.Category
         if cat is None:
             continue
-        if cat.CategoryType.ToString() == "Model":
+        if _category_type_label(cat) == "Model":
             elems.append(e)
     return elems
 
@@ -181,7 +206,7 @@ def get_annotation_elements(view):
         cat = e.Category
         if cat is None:
             continue
-        if cat.CategoryType.ToString() == "Annotation":
+        if _category_type_label(cat) == "Annotation":
             elems.append(e)
     return elems
 
