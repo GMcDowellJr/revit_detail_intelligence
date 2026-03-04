@@ -1,64 +1,42 @@
-# System Architecture
+# How the System Recognizes Similar Details
 
 ```mermaid
 flowchart TD
 
-%% INPUT
-A[User selects exterior wall face]
-
-%% MODEL ANALYSIS LAYER
-subgraph Model Analysis
-B[Scan facade band]
-C[Generate candidate section locations]
-D[Create section views]
-E[Extract geometry from elements intersecting section plane]
-F[Cluster endpoints into detail regions]
+subgraph Left[Candidate condition from model section]
+A1[Section plane geometry from intersecting model elements]
+A2[Endpoints and curves]
+A3[Clustered region candidate detail area]
+A4[Semantic tokens: category, type, context]
+A5[Geometry fingerprint: normalized edge-length and angle histograms]
+A6[Feature vector]
 end
 
-%% FEATURE EXTRACTION LAYER
-subgraph Feature Extraction
-G[Extract semantic tokens<br/>category type context]
-H[Build geometry fingerprint<br/>normalized edge patterns]
-I[Assemble feature vector]
+subgraph Right[Existing details in project or library]
+B1[Detail or Drafting View]
+B2[Extract tokens from elements or drafting content]
+B3[Extract geometry curves and endpoints]
+B4[Geometry fingerprint: normalized edge-length and angle histograms]
+B5[Feature vector]
 end
 
-%% DETAIL INDEX
-subgraph Detail Index
-J[Index project details]
-K[Index library drafting views]
-end
+A1 --> A2 --> A3
+A3 --> A4 --> A6
+A3 --> A5 --> A6
 
-%% SIMILARITY ENGINE
-subgraph Similarity Engine
-L[Compute similarity scores]
-M[Rank candidate matches]
-end
+B1 --> B2 --> B5
+B1 --> B3 --> B4 --> B5
 
-%% OUTPUT
-subgraph Output
-N[High confidence reuse]
-O[Similar detail candidates]
-P[New detail likely required]
-end
+A6 --> C[Similarity engine weighted scoring]
+B5 --> C
 
-A --> B
-B --> C
-C --> D
-D --> E
-E --> F
+C --> D1[Match 1 High confidence]
+C --> D2[Match 2 Medium confidence]
+C --> D3[Match 3 Low confidence]
+```
 
-F --> G
-F --> H
+## Notes
 
-G --> I
-H --> I
-
-I --> L
-J --> L
-K --> L
-
-L --> M
-
-M --> N
-M --> O
-M --> P
+- The geometry fingerprint is designed to tolerate dimensional variation such as different wall thicknesses or small offsets by normalizing lengths and binning geometric relationships.
+- Semantic tokens provide contextual signals derived from the elements or drafting content present in the detail, helping reduce false matches.
+- The system produces ranked suggestions with confidence tiers rather than making automated drafting decisions.
