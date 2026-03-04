@@ -6,12 +6,16 @@ Inputs (Dynamo IN):
 - IN[0]: query view reference (DB.View, wrapped Dynamo View, ElementId/int, or single-item list)
 - IN[1]: corpus view references (list of the same supported formats)
 - IN[2]: topN (optional, default=5)
+- IN[3]: sampleN (optional). When provided, returns sampled fingerprint reports instead of similarity results.
+- IN[4]: sampleSeed (optional, default=0). Used only when IN[3] is provided.
 
 Output (OUT):
-- list[dict] sorted by descending similarity score.
+- similarity mode: list[dict] sorted by descending similarity score.
+- sampling mode: list[dict] fingerprint report for each sampled view, including collected element-level details, geometry summaries, and summary counts.
 """
 
 import math
+import random
 from collections import defaultdict
 
 import clr
@@ -27,6 +31,8 @@ from Autodesk.Revit.DB import (
     FamilyInstance,
     FilledRegion,
     FilteredElementCollector,
+    GeometryInstance,
+    Options,
     TextNote,
     View,
     ViewType,
@@ -47,6 +53,8 @@ CONFIG = {
     "ang_bins_deg": [0, 15, 30, 45, 60, 75, 90, 105, 120, 135, 150, 165, 180],
     "tol_coord": 1.0 / 256.0,  # feet
     "weights": {"w_tokens": 0.55, "w_geom": 0.35, "w_fine": 0.10},
+    "low_semantic_weights": {"w_tokens": 0.20, "w_geom": 0.70, "w_fine": 0.10},
+    "min_token_threshold": 4,
     "confidence_thresholds": {"HIGH_min": 0.85, "MED_min": 0.65},
     "token_weights_by_kind": {
         "category": 1.0,
@@ -59,6 +67,7 @@ CONFIG = {
     },
 }
 EPS = 1e-9
+TOKEN_STOPWORDS = {"<none>", "<no-type>", "<unknown-type>", "", "default", "none", "n/a"}
 
 
 class ViewFeatures(object):
@@ -139,12 +148,163 @@ def _safe_name(obj, fallback="<none>"):
         return fallback
 
 
+def _safe_type_name(element, fallback="<unknown-type>"):
+    type_name = _resolve_type_name(element, fallback=fallback)
+    return type_name if is_valid_token_value(type_name) else fallback
+
+
+def _class_name(element):
+    try:
+        return element.GetType().Name
+    except Exception:
+        return "<unknown-class>"
+
+
+def _increment(counter, key, amount=1):
+    counter[key] = counter.get(key, 0) + amount
+
+
+def _category_name(element):
+    return _safe_name(getattr(element, "Category", None), fallback="<none>")
+
+
+def _is_annotation_like(element):
+    cat = getattr(element, "Category", None)
+    if _category_type_label(cat) == "Annotation":
+        return True
+    # Fallback for hosts where category typing is unreliable.
+    if isinstance(element, (FamilyInstance, FilledRegion, Dimension, TextNote, CurveElement)):
+        return True
+    return False
+
+
+def _collect_curves_from_geometry(geom_obj, out_curves):
+    if geom_obj is None:
+        return
+    for g in geom_obj:
+        if g is None:
+            continue
+        try:
+            if hasattr(g, "AsCurve"):
+                c = g.AsCurve()
+                if c is not None:
+                    out_curves.append(c)
+                    continue
+        except Exception:
+            pass
+
+        if hasattr(g, "GetEndPoint"):
+            out_curves.append(g)
+            continue
+
+        if isinstance(g, GeometryInstance):
+            try:
+                _collect_curves_from_geometry(g.GetInstanceGeometry(), out_curves)
+            except Exception:
+                pass
+            try:
+                _collect_curves_from_geometry(g.GetSymbolGeometry(), out_curves)
+            except Exception:
+                pass
+
+
+def _element_geometry_curves(element, view=None):
+    curves = []
+
+    if isinstance(element, CurveElement):
+        try:
+            if element.GeometryCurve is not None:
+                curves.append(element.GeometryCurve)
+                return curves
+        except Exception:
+            pass
+
+    if isinstance(element, FilledRegion):
+        try:
+            loops = element.GetBoundaries()
+            for loop in loops:
+                for c in loop:
+                    curves.append(c)
+            if curves:
+                return curves
+        except Exception:
+            pass
+
+    try:
+        opts = Options()
+        if view is not None:
+            opts.View = view
+        geom = element.get_Geometry(opts)
+        _collect_curves_from_geometry(geom, curves)
+    except Exception:
+        pass
+
+    return curves
+
+
+def _geometry_summary_for_element(element, view=None):
+    curves = _element_geometry_curves(element, view=view)
+    pts = endpoints_from_curves(curves)
+    return {
+        "curve_count": len(curves),
+        "endpoint_count": len(pts),
+        "unique_endpoint_count": len(dedupe_points_by_grid(pts, CONFIG["tol_coord"])) if pts else 0,
+        "curve_total_length": sum(getattr(c, "Length", 0.0) for c in curves),
+    }
+
+
+def token_assignment_policy():
+    return {
+        "DETAIL_MODEL": {
+            "category": "token = 'category:' + element category name",
+            "type_sig": "token = 'type_sig:' + family|type signature",
+        },
+        "DETAIL_DRAFTING_OR_DRAFTING": {
+            "FamilyInstance": "token = 'detail_component:' + family|type signature",
+            "FilledRegion": "token = 'fill_region:' + filled region name",
+            "Dimension": "token = 'dim_style:' + dimension style name",
+            "TextNote": "token = 'text_type:' + text type name",
+            "CurveElement": "token = 'line_style:' + line style name",
+            "Unmapped annotation": "no token (reported in collected_info.reason)",
+        },
+        "weights_by_kind": dict(CONFIG["token_weights_by_kind"]),
+        "stopword_values": sorted(TOKEN_STOPWORDS),
+    }
+
+
+def is_valid_token_value(value):
+    txt = "" if value is None else str(value).strip()
+    if not txt:
+        return False
+    if txt.lower() in TOKEN_STOPWORDS:
+        return False
+    return True
+
+
+def _signature_parts_are_valid(signature):
+    if "|" not in signature:
+        return is_valid_token_value(signature)
+    left, right = signature.split("|", 1)
+    return is_valid_token_value(left) and is_valid_token_value(right)
+
+
 def _token_weight(kind):
     return CONFIG["token_weights_by_kind"].get(kind, 1.0)
 
 
 def _add_token(tokens, token, kind):
     tokens[token] += _token_weight(kind)
+
+
+def _emit_token(tokens, prefix, value, kind):
+    value_txt = "" if value is None else str(value).strip()
+    if not is_valid_token_value(value_txt):
+        return None
+    if prefix in ("detail_component", "type_sig") and not _signature_parts_are_valid(value_txt):
+        return None
+    token = "{}:{}".format(prefix, value_txt)
+    _add_token(tokens, token, kind)
+    return token
 
 
 def _category_type_label(category):
@@ -211,18 +371,46 @@ def get_annotation_elements(view):
     return elems
 
 
-def type_signature(element):
-    doc = element.Document
-    type_name = "<no-type>"
+def _resolve_type_name(element, fallback="<unknown-type>"):
+    if element is None:
+        return fallback
+
+    # For drafting/detail FamilyInstance (detail components), Symbol is the most
+    # reliable source of the displayed type name (e.g., W12X40) in Dynamo hosts.
+    if isinstance(element, FamilyInstance):
+        try:
+            symbol = element.Symbol
+            if symbol is not None:
+                type_name = _safe_name(symbol, fallback=fallback)
+                if is_valid_token_value(type_name):
+                    return type_name
+        except Exception:
+            pass
+
+    doc = getattr(element, "Document", None)
+    if doc is None:
+        return fallback
+
+    # Fallback path for non-FamilyInstance (or when Symbol is unavailable).
     try:
-        typ = doc.GetElement(element.GetTypeId())
-        type_name = _safe_name(typ)
+        type_id = element.GetTypeId()
+        if type_id is not None and type_id != ElementId.InvalidElementId:
+            type_elem = doc.GetElement(type_id)
+            type_name = _safe_name(type_elem, fallback=fallback)
+            if is_valid_token_value(type_name):
+                return type_name
     except Exception:
         pass
 
+    return fallback
+
+
+def type_signature(element):
+    type_name = _resolve_type_name(element, fallback="<unknown-type>")
+
     fam_name = "<no-family>"
     if isinstance(element, FamilyInstance) and element.Symbol is not None:
-        fam_name = _safe_name(element.Symbol.Family)
+        fam_name = _safe_name(element.Symbol.Family, fallback=fam_name)
     return "{}|{}".format(fam_name, type_name)
 
 
@@ -232,17 +420,44 @@ def family_type_sig(annotation_element):
 
 def get_2d_curves_in_view(view, only_model_intersections=False):
     # Practical Dynamo/Revit implementation:
-    # - Collect view-owned detail curves
-    # - Add model curves visible in the view when requested
+    # - Collect view-owned detail/model curves
+    # - For drafting/annotation contexts also include curves from detail components
+    #   and filled regions so fingerprint geometry is not line-only.
     curves = []
+    seen_curve_ids = set()
+
     for e in get_view_elements(view):
         if isinstance(e, CurveElement):
-            if only_model_intersections:
-                if isinstance(e, (DetailCurve, DetailLine)):
-                    continue
-            c = e.GeometryCurve
+            if only_model_intersections and isinstance(e, (DetailCurve, DetailLine)):
+                continue
+            try:
+                c = e.GeometryCurve
+            except Exception:
+                c = None
             if c is not None:
                 curves.append(c)
+            continue
+
+        if only_model_intersections:
+            continue
+
+        if isinstance(e, (FamilyInstance, FilledRegion)):
+            for c in _element_geometry_curves(e, view=view):
+                key = None
+                try:
+                    p0 = c.GetEndPoint(0)
+                    p1 = c.GetEndPoint(1)
+                    key = (
+                        round(p0.X, 6), round(p0.Y, 6), round(p0.Z, 6),
+                        round(p1.X, 6), round(p1.Y, 6), round(p1.Z, 6),
+                    )
+                except Exception:
+                    pass
+                if key is None or key not in seen_curve_ids:
+                    curves.append(c)
+                    if key is not None:
+                        seen_curve_ids.add(key)
+
     return curves
 
 
@@ -401,18 +616,49 @@ def gaussian_sim(x, y, sigma=0.5):
     return math.exp(-(d * d) / (2.0 * sigma * sigma))
 
 
-def token_similarity(tokens_a, tokens_b):
+def build_token_df(corpus_views):
+    token_df = defaultdict(int)
+    clean = [v for v in corpus_views if isinstance(v, View)]
+    for v in clean:
+        feat = extract_features(v)
+        for t in feat.tokens.keys():
+            token_df[t] += 1
+    return dict(token_df), len(clean)
+
+
+def _build_token_idf(token_df, doc_count):
+    n = max(1, int(doc_count))
+    idf = {}
+    for token, df in token_df.items():
+        if df <= 0:
+            continue
+        idf[token] = math.log(float(n) / float(df))
+    return idf
+
+
+def token_similarity(tokens_a, tokens_b, token_idf=None, default_idf=1.0):
     keys = set(tokens_a.keys()) | set(tokens_b.keys())
     if not keys:
         return 0.0
+    idf_map = token_idf or {}
     num = 0.0
     den = 0.0
     for k in keys:
         a = tokens_a.get(k, 0.0)
         b = tokens_b.get(k, 0.0)
-        num += min(a, b)
-        den += max(a, b)
+        idf = idf_map.get(k, default_idf)
+        wa = a * idf
+        wb = b * idf
+        num += min(wa, wb)
+        den += max(wa, wb)
     return 0.0 if den <= EPS else num / den
+
+
+def _effective_weights(q, c):
+    min_tokens = int(CONFIG.get("min_token_threshold", 4))
+    if len(q.tokens) < min_tokens or len(c.tokens) < min_tokens:
+        return CONFIG.get("low_semantic_weights", CONFIG["weights"])
+    return CONFIG["weights"]
 
 
 def fine_similarity(fa, fb):
@@ -447,28 +693,127 @@ def explain_match(q, c):
     }
 
 
-def extract_features(view):
-    kind = classify_view_kind(view)
-    tokens = defaultdict(float)
+def _element_base_info(element):
+    return {
+        "element_id": getattr(getattr(element, "Id", None), "IntegerValue", None),
+        "class_name": _class_name(element),
+        "category": _safe_name(getattr(element, "Category", None), fallback="<none>"),
+    }
+
+
+def _collect_token_data_for_view(view, kind, tokens=None, include_element_report=False):
+    token_store = tokens if tokens is not None else defaultdict(float)
+    element_report = []
+    summary = {
+        "elements_seen_total": 0,
+        "elements_collected_total": 0,
+        "elements_with_tokens": 0,
+        "elements_without_tokens": 0,
+        "count_by_collection_group": {},
+        "count_by_class_name": {},
+    }
+
+    def record_row(element, group, info, added_tokens, collected=True):
+        _increment(summary, "elements_seen_total")
+        if collected:
+            _increment(summary, "elements_collected_total")
+        _increment(summary["count_by_collection_group"], group)
+        class_name = _class_name(element)
+        _increment(summary["count_by_class_name"], class_name)
+
+        if added_tokens:
+            _increment(summary, "elements_with_tokens")
+        else:
+            _increment(summary, "elements_without_tokens")
+
+        if include_element_report:
+            geom_summary = _geometry_summary_for_element(element, view=view)
+            if geom_summary.get("curve_count", 0) == 0:
+                geom_summary["note"] = "No extractable curves from element geometry in current view/context"
+            row = _element_base_info(element)
+            row.update(
+                {
+                    "collection_group": group,
+                    "collected": bool(collected),
+                    "collected_info": dict(info, tokens_added=added_tokens),
+                    "geometry_summary": geom_summary,
+                }
+            )
+            element_report.append(row)
 
     if kind == "DETAIL_MODEL":
         for e in get_model_elements_contributing_to_view(view):
             cat_name = _safe_name(e.Category, "<no-category>")
-            _add_token(tokens, "category:" + cat_name, "category")
-            _add_token(tokens, "type_sig:" + type_signature(e), "type_sig")
+            type_sig = type_signature(e)
+            category_emitted = _emit_token(token_store, "category", cat_name, "category")
+            type_emitted = _emit_token(token_store, "type_sig", type_sig, "type_sig")
+            record_row(
+                e,
+                "model_elements",
+                {"category_name": cat_name, "type_signature": type_sig},
+                [t for t in (category_emitted, type_emitted) if t],
+                collected=True,
+            )
     else:
-        for a in get_annotation_elements(view):
+        for a in get_view_elements(view):
+            if not _is_annotation_like(a):
+                continue
+
+            added_tokens = []
+            info = {}
+            group = "annotation_elements_unmapped"
+
             if isinstance(a, FamilyInstance):
-                _add_token(tokens, "detail_component:" + family_type_sig(a), "detail_component")
+                value = family_type_sig(a)
+                emitted = _emit_token(token_store, "detail_component", value, "detail_component")
+                if emitted is not None:
+                    added_tokens.append(emitted)
+                info["detail_component_sig"] = value
+                info["element_type_name"] = _safe_type_name(a)
+                group = "annotation_detail_components"
             elif isinstance(a, FilledRegion):
-                _add_token(tokens, "fill_region:" + _safe_name(a), "fill_region")
+                value = _safe_name(a)
+                emitted = _emit_token(token_store, "fill_region", value, "fill_region")
+                if emitted is not None:
+                    added_tokens.append(emitted)
+                info["fill_region_name"] = value
+                group = "annotation_filled_regions"
             elif isinstance(a, Dimension):
-                _add_token(tokens, "dim_style:" + _safe_name(a.DimensionType), "dim_style")
+                value = _safe_name(a.DimensionType)
+                emitted = _emit_token(token_store, "dim_style", value, "dim_style")
+                if emitted is not None:
+                    added_tokens.append(emitted)
+                info["dimension_style"] = value
+                info["dimension_type_name"] = _safe_type_name(a)
+                group = "annotation_dimensions"
             elif isinstance(a, TextNote):
-                _add_token(tokens, "text_type:" + _safe_name(a.TextNoteType), "text_type")
+                value = _safe_name(a.TextNoteType)
+                emitted = _emit_token(token_store, "text_type", value, "text_type")
+                if emitted is not None:
+                    added_tokens.append(emitted)
+                info["text_type"] = value
+                info["text_type_name"] = _safe_type_name(a)
+                group = "annotation_text_notes"
             elif isinstance(a, (DetailCurve, DetailLine, CurveElement)):
-                style = _safe_name(a.LineStyle)
-                _add_token(tokens, "line_style:" + style, "line_style")
+                value = _safe_name(a.LineStyle)
+                emitted = _emit_token(token_store, "line_style", value, "line_style")
+                if emitted is not None:
+                    added_tokens.append(emitted)
+                info["line_style"] = value
+                group = "annotation_lines"
+
+            if not added_tokens:
+                info["reason"] = "token filtered by stopword policy or element is not mapped to a token strategy"
+                info["category_name"] = _category_name(a)
+
+            record_row(a, group, info, added_tokens, collected=True)
+
+    return dict(token_store), element_report, summary
+
+
+def extract_features(view):
+    kind = classify_view_kind(view)
+    tokens, _, _ = _collect_token_data_for_view(view, kind, include_element_report=False)
 
     curves = get_2d_curves_in_view(view, only_model_intersections=(kind == "DETAIL_MODEL"))
     pts = endpoints_from_curves(curves)
@@ -505,13 +850,20 @@ def find_similar_views(query_view, corpus_views, top_n=5):
     q = extract_features(query_view)
     corpus_feat = [extract_features(v) for v in corpus_views if isinstance(v, View) and v.Id != query_view.Id]
 
-    results = []
-    w = CONFIG["weights"]
+    token_df = defaultdict(int)
     for c in corpus_feat:
-        s_tokens = token_similarity(q.tokens, c.tokens)
+        for token in c.tokens.keys():
+            token_df[token] += 1
+    token_idf = _build_token_idf(token_df, len(corpus_feat))
+    default_idf = math.log(float(max(1, len(corpus_feat))))
+
+    results = []
+    for c in corpus_feat:
+        weights = _effective_weights(q, c)
+        s_tokens = token_similarity(q.tokens, c.tokens, token_idf=token_idf, default_idf=default_idf)
         s_geom = cosine_similarity(q.geom_fingerprint, c.geom_fingerprint)
         s_fine = fine_similarity(q.fine_metrics, c.fine_metrics)
-        s_total = w["w_tokens"] * s_tokens + w["w_geom"] * s_geom + w["w_fine"] * s_fine
+        s_total = weights["w_tokens"] * s_tokens + weights["w_geom"] * s_geom + weights["w_fine"] * s_fine
         results.append(
             {
                 "candidate_view_id": c.view_id,
@@ -528,16 +880,71 @@ def find_similar_views(query_view, corpus_views, top_n=5):
     return results[: max(0, int(top_n))]
 
 
+def _view_label(view):
+    try:
+        return view.Name
+    except Exception:
+        return "<unknown>"
+
+
+def sample_view_fingerprints(views, sample_size, seed=0):
+    """
+    Sample a deterministic random subset of views and report each view fingerprint.
+
+    Fingerprints are produced by the same extract_features(...) strategy used in
+    similarity matching.
+    """
+    clean_views = [v for v in views if isinstance(v, View)]
+    if not clean_views:
+        return []
+
+    n = max(0, int(sample_size))
+    if n == 0:
+        return []
+
+    if n >= len(clean_views):
+        sampled = list(clean_views)
+    else:
+        rng = random.Random(int(seed))
+        sampled = rng.sample(clean_views, n)
+
+    report = []
+    for v in sampled:
+        feat = extract_features(v)
+        _, element_report, collection_summary = _collect_token_data_for_view(v, feat.view_kind, include_element_report=True)
+        report.append(
+            {
+                "view_id": feat.view_id,
+                "view_name": _view_label(v),
+                "view_kind": feat.view_kind,
+                "tokens": feat.tokens,
+                "geom_fingerprint": feat.geom_fingerprint,
+                "fine_metrics": feat.fine_metrics,
+                "debug": feat.debug,
+                "collected_elements": element_report,
+                "collection_summary": collection_summary,
+                "token_assignment_policy": token_assignment_policy(),
+            }
+        )
+
+    report.sort(key=lambda r: r["view_id"])
+    return report
+
+
 # Dynamo entrypoint
 doc = _current_doc()
 query_input = IN[0] if len(IN) > 0 else None
 corpus_input = IN[1] if len(IN) > 1 else []
 top_n = IN[2] if len(IN) > 2 and IN[2] is not None else 5
+sample_n = IN[3] if len(IN) > 3 else None
+sample_seed = IN[4] if len(IN) > 4 and IN[4] is not None else 0
 
 query_view = _coerce_view(query_input, fallback_doc=doc)
 corpus_views = _coerce_views(corpus_input, fallback_doc=doc)
 
-if query_view is None:
+if sample_n is not None:
+    OUT = sample_view_fingerprints(corpus_views, sample_n, seed=sample_seed)
+elif query_view is None:
     OUT = {
         "error": "IN[0] must resolve to a Revit DB.View (View, wrapped View, ElementId, int, or single-item list)."
     }
