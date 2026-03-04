@@ -79,21 +79,21 @@ Key principles:
 ## Repository Structure
 
 docs/
-system-overview.md
-pipeline-architecture.md
-geometry-fingerprint.md
-similarity-matching.md
-detail-indexing.md
-calibration-and-validation.md
+- system-overview.md
+- pipeline-architecture.md
+- geometry-fingerprint.md
+- similarity-matching.md
+- detail-indexing.md
+- calibration-and-validation.md
 
 research/
-experiments and exploratory notes
+- experiments and exploratory notes
 
 src/
-implementation code
+- implementation code
 
 examples/
-sample inputs and outputs
+-sample inputs and outputs
 
 ---
 
