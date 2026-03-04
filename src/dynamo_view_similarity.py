@@ -67,7 +67,7 @@ CONFIG = {
     },
 }
 EPS = 1e-9
-TOKEN_STOPWORDS = {"<none>", "<no-type>", "", "default", "none", "n/a"}
+TOKEN_STOPWORDS = {"<none>", "<no-type>", "<unknown-type>", "", "default", "none", "n/a"}
 
 
 class ViewFeatures(object):
@@ -148,7 +148,7 @@ def _safe_name(obj, fallback="<none>"):
         return fallback
 
 
-def _safe_type_name(element, fallback="<none>"):
+def _safe_type_name(element, fallback="<unknown-type>"):
     type_name = _resolve_type_name(element, fallback=fallback)
     return type_name if is_valid_token_value(type_name) else fallback
 
@@ -375,10 +375,23 @@ def _resolve_type_name(element, fallback="<unknown-type>"):
     if element is None:
         return fallback
 
+    # For drafting/detail FamilyInstance (detail components), Symbol is the most
+    # reliable source of the displayed type name (e.g., W12X40) in Dynamo hosts.
+    if isinstance(element, FamilyInstance):
+        try:
+            symbol = element.Symbol
+            if symbol is not None:
+                type_name = _safe_name(symbol, fallback=fallback)
+                if is_valid_token_value(type_name):
+                    return type_name
+        except Exception:
+            pass
+
     doc = getattr(element, "Document", None)
     if doc is None:
         return fallback
 
+    # Fallback path for non-FamilyInstance (or when Symbol is unavailable).
     try:
         type_id = element.GetTypeId()
         if type_id is not None and type_id != ElementId.InvalidElementId:
