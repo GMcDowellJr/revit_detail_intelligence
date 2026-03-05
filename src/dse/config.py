@@ -18,6 +18,21 @@ CONFIG = {
         "dim_style": 1.2,
         "text_type": 0.8,
     },
+    "pipeline_version": "dse.pipeline.v0.2.1",
+    "stage2_rerank": {
+        "enabled": True,
+        "pool_top_k": 50,
+        "band_mode": "top_k",
+        "score_delta": 0.10,
+        "require_min_stage1_score": 0.25,
+        "min_symbol_coverage": 0.70,
+        "min_view_raster_available": True,
+    },
+    "confidence_policy": {
+        "margin_high": 0.15,
+        "margin_med": 0.07,
+        "raster_support_threshold": 0.90,
+    },
 }
 EPS = 1e-9
 TOKEN_STOPWORDS = {"<none>", "<no-type>", "<unknown-type>", "", "default", "none", "n/a"}
