@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Callable, Dict, Iterable, List, Optional
+from typing import Callable, Dict, List, Optional
 
 from dse.cache.symbol_cache import symbol_coverage_for_view, symbol_multiset_similarity
 
@@ -26,7 +26,9 @@ class Stage2Result:
     notes: List[str] = field(default_factory=list)
 
 
-def select_rerank_pool(results: List[Stage1Result], rerank_cfg: Dict[str, float]) -> List[Stage1Result]:
+def select_rerank_pool(
+    results: List[Stage1Result], rerank_cfg: Dict[str, float]
+) -> List[Stage1Result]:
     if not results:
         return []
 
@@ -88,7 +90,9 @@ def stage2_rerank(
 
         score_symbols = None
         if min(query_cov, candidate_cov) >= float(rerank_cfg.get("min_symbol_coverage", 0.70)):
-            score_symbols = symbol_multiset_similarity(query_symbols, candidate_symbols, symbol_cache)
+            score_symbols = symbol_multiset_similarity(
+                query_symbols, candidate_symbols, symbol_cache
+            )
         else:
             notes.append("low_symbol_coverage")
 

@@ -123,7 +123,7 @@ def build_symbol_descriptor(
 def cosine_sim(a: List[float], b: List[float]) -> float:
     if len(a) != len(b) or not a:
         return 0.0
-    dot = sum(x * y for x, y in zip(a, b))
+    dot = sum(a[index] * b[index] for index in range(len(a)))
     n1 = math.sqrt(sum(x * x for x in a))
     n2 = math.sqrt(sum(y * y for y in b))
     if n1 == 0.0 or n2 == 0.0:
@@ -176,7 +176,8 @@ def aggregate_symbol_descriptors(
 
     weight_sum = float(sum(weights))
     out = [0.0] * length
-    for vector, weight in zip(vectors, weights):
+    for idx, vector in enumerate(vectors):
+        weight = weights[idx]
         for index, value in enumerate(vector):
             out[index] += value * weight
     return [value / weight_sum for value in out]
@@ -194,7 +195,9 @@ def symbol_multiset_similarity(
     return cosine_sim(vec_a, vec_b)
 
 
-def symbol_coverage_for_view(view_symbol_keys: Mapping[SymbolKey, int], cache: SymbolCacheModel) -> float:
+def symbol_coverage_for_view(
+    view_symbol_keys: Mapping[SymbolKey, int], cache: SymbolCacheModel
+) -> float:
     total = float(sum(view_symbol_keys.values()))
     if total == 0:
         return 1.0

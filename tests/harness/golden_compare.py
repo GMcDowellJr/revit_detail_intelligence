@@ -60,7 +60,9 @@ def _compare_results(old, new):
     if old_ids != new_ids:
         deltas.append("Top-N ordering differs")
 
-    for idx, (o, n) in enumerate(zip(old, new)):
+    for idx in range(min(len(old), len(new))):
+        o = old[idx]
+        n = new[idx]
         for key in ("score_tokens", "score_geom", "score_fine", "score_total"):
             if not _float_close(o.get(key, 0.0), n.get(key, 0.0)):
                 deltas.append(

@@ -33,15 +33,23 @@ def test_select_rerank_pool_supports_delta_and_top_k():
         Stage1Result(3, 0.6, 0, 0, 0, "MEDIUM"),
     ]
     assert len(select_rerank_pool(rows, {"band_mode": "top_k", "pool_top_k": 2})) == 2
-    assert [r.candidate_view_id for r in select_rerank_pool(rows, {"band_mode": "score_delta", "score_delta": 0.1})] == [1, 2]
+    delta_pool = select_rerank_pool(
+        rows,
+        {"band_mode": "score_delta", "score_delta": 0.1},
+    )
+    assert [r.candidate_view_id for r in delta_pool] == [1, 2]
 
 
 def test_stage2_rerank_respects_stage1_threshold_and_adds_support_flags():
     query_key = SymbolKey("Fam", "T", "h1")
     candidate_key = SymbolKey("Fam", "T", "h1")
 
-    symbol_cache = SymbolCacheModel(schema="symbol_cache.v1", corpus_id="c", pipeline_version="v")
-    symbol_cache.descriptors[stable_cache_key(query_key)] = _symbol_descriptor(query_key, [1.0, 0.0])
+    symbol_cache = SymbolCacheModel(
+        schema="symbol_cache.v1", corpus_id="c", pipeline_version="v"
+    )
+    symbol_cache.descriptors[stable_cache_key(query_key)] = _symbol_descriptor(
+        query_key, [1.0, 0.0]
+    )
 
     stage1 = [
         Stage1Result(101, 0.2, 0, 0, 0, "LOW"),

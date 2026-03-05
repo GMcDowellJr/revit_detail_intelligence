@@ -21,6 +21,10 @@ def _variant(vector, mirror=None, density=0.1):
     )
 
 
+def _fake_descriptor(build_method, variant):
+    return type("D", (), {"build_method": build_method, "variants": {"u": variant}})()
+
+
 def test_stable_key_and_validity_token_are_deterministic():
     key = SymbolKey("Door", "Type A", "abc123")
     assert stable_cache_key(key) == "sym:abc123|Door|Type A"
@@ -41,7 +45,9 @@ def test_symbol_multiset_similarity_and_coverage():
     k2 = SymbolKey("FamB", "T2", "h2")
 
     cache = SymbolCacheModel(schema="symbol_cache.v1", corpus_id="c", pipeline_version="v")
-    cache.descriptors[stable_cache_key(k1)] = type("D", (), {"variants": {"uniform": _variant([1.0, 0.0])}, "build_method": "family_doc"})()
+    cache.descriptors[stable_cache_key(k1)] = _fake_descriptor(
+        "family_doc", _variant([1.0, 0.0])
+    )
 
     view_a = {k1: 2, k2: 1}
     view_b = {k1: 1}
@@ -55,8 +61,12 @@ def test_compute_cache_stats_counts_near_empty_and_failures():
     k2 = SymbolKey("FamB", "T2", "h2")
 
     descriptors = {
-        stable_cache_key(k1): type("D", (), {"build_method": "family_doc", "variants": {"u": _variant([1.0], density=0.0001)}})(),
-        stable_cache_key(k2): type("D", (), {"build_method": "isolated_render", "variants": {"u": _variant([1.0], density=0.5)}})(),
+        stable_cache_key(k1): _fake_descriptor(
+            "family_doc", _variant([1.0], density=0.0001)
+        ),
+        stable_cache_key(k2): _fake_descriptor(
+            "isolated_render", _variant([1.0], density=0.5)
+        ),
     }
 
     stats = compute_cache_stats(
