@@ -24,7 +24,7 @@ def token_similarity(tokens_a, tokens_b, token_idf=None, default_idf=1.0):
 def cosine_similarity(a, b):
     if not a or not b or len(a) != len(b):
         return 0.0
-    dot = sum(x * y for x, y in zip(a, b, strict=False))
+    dot = sum(x * y for x, y in zip(a, b))
     na = math.sqrt(sum(x * x for x in a))
     nb = math.sqrt(sum(y * y for y in b))
     if na <= EPS or nb <= EPS:
