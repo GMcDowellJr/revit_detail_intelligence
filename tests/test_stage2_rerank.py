@@ -88,5 +88,66 @@ def test_stage2_rerank_respects_stage1_threshold_and_adds_support_flags():
         build_view_raster_signature=lambda view: "generated_sig",
     )
 
-    assert out[0].notes == ["stage1_below_min; no rerank"]
-    assert out[1].confidence_raster_support == "STRONG"
+    by_id = {row.candidate_view_id: row for row in out}
+    assert by_id[101].notes == ["stage1_below_min; no rerank"]
+    assert by_id[102].confidence_raster_support == "STRONG"
+
+
+def test_stage2_rerank_sorts_pool_and_keeps_non_pooled_candidates():
+    query_key = SymbolKey("Fam", "T", "h1")
+
+    symbol_cache = SymbolCacheModel(
+        schema="symbol_cache.v1", corpus_id="c", pipeline_version="v"
+    )
+    symbol_cache.descriptors[stable_cache_key(query_key)] = _symbol_descriptor(
+        query_key, [1.0, 0.0]
+    )
+
+    stage1 = [
+        Stage1Result(201, 0.90, 0, 0, 0, "HIGH"),
+        Stage1Result(202, 0.80, 0, 0, 0, "HIGH"),
+        Stage1Result(203, 0.70, 0, 0, 0, "MEDIUM"),
+    ]
+
+    views = {
+        200: {"id": 200, "symbols": {query_key: 1}},
+        201: {"id": 201, "symbols": {query_key: 1}},
+        202: {"id": 202, "symbols": {query_key: 1}},
+        203: {"id": 203, "symbols": {query_key: 1}},
+    }
+
+    config = {
+        "stage2_rerank": {
+            "pool_top_k": 2,
+            "band_mode": "top_k",
+            "require_min_stage1_score": 0.25,
+            "min_symbol_coverage": 0.7,
+            "min_view_raster_available": True,
+        },
+        "confidence_policy": {"raster_support_threshold": 0.9},
+    }
+
+    view_raster_cache = {200: "query_sig"}
+
+    def _raster_similarity(_a, candidate_sig):
+        if candidate_sig == "sig_201":
+            return 0.10
+        return 0.99
+
+    out = stage2_rerank(
+        stage1_results=stage1,
+        query_view_id=200,
+        query_symbols=views[200]["symbols"],
+        symbol_cache=symbol_cache,
+        view_raster_cache=view_raster_cache,
+        config=config,
+        resolve_view=lambda vid: views[vid],
+        extract_view_symbol_multiset=lambda view: view["symbols"],
+        view_raster_similarity=_raster_similarity,
+        build_view_raster_signature=lambda view: "sig_{}".format(view["id"]),
+    )
+
+    assert [row.candidate_view_id for row in out] == [202, 201, 203]
+    assert out[0].score_combined > out[1].score_combined
+    assert out[2].score_combined == stage1[2].score_total
+    assert out[2].score_raster is None

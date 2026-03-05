@@ -42,6 +42,18 @@ def select_rerank_pool(
     return results[: max(top_k, 0)]
 
 
+def _to_passthrough_result(row: Stage1Result) -> Stage2Result:
+    return Stage2Result(
+        candidate_view_id=row.candidate_view_id,
+        score_stage1_total=row.score_total,
+        score_raster=None,
+        score_symbols=None,
+        score_combined=row.score_total,
+        confidence_raster_support="NONE",
+        notes=[],
+    )
+
+
 def stage2_rerank(
     stage1_results: List[Stage1Result],
     query_view_id: int,
@@ -67,10 +79,10 @@ def stage2_rerank(
 
     query_cov = symbol_coverage_for_view(query_symbols, symbol_cache)
 
-    out: List[Stage2Result] = []
+    pooled_results: List[Stage2Result] = []
     for row in pool:
         if row.score_total < float(rerank_cfg.get("require_min_stage1_score", 0.25)):
-            out.append(
+            pooled_results.append(
                 Stage2Result(
                     candidate_view_id=row.candidate_view_id,
                     score_stage1_total=row.score_total,
@@ -121,7 +133,7 @@ def stage2_rerank(
             elif score_raster >= 0.75:
                 support = "WEAK"
 
-        out.append(
+        pooled_results.append(
             Stage2Result(
                 candidate_view_id=row.candidate_view_id,
                 score_stage1_total=row.score_total,
@@ -133,4 +145,18 @@ def stage2_rerank(
             )
         )
 
-    return out
+    pool_index = {row.candidate_view_id: idx for idx, row in enumerate(pool)}
+    pooled_results.sort(
+        key=lambda result: (
+            -result.score_combined,
+            pool_index.get(result.candidate_view_id, 10**9),
+        )
+    )
+
+    pooled_ids = {row.candidate_view_id for row in pool}
+    passthrough = [
+        _to_passthrough_result(row)
+        for row in stage1_results
+        if row.candidate_view_id not in pooled_ids
+    ]
+    return pooled_results + passthrough
