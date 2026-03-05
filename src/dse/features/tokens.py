@@ -49,7 +49,7 @@ def resolve_type_name(element, fallback="<unknown-type>"):
     if element is None:
         return fallback
 
-    # FIX: prefer symbol/type name for family instances in Dynamo/Revit hosts.
+    # FamilyInstance: Symbol.Name is most reliable in CPython3/Python.NET hosts.
     symbol = getattr(element, "Symbol", None)
     if symbol is not None:
         try:
@@ -59,6 +59,24 @@ def resolve_type_name(element, fallback="<unknown-type>"):
         except Exception:
             pass
 
+    # TextNote / Dimension: access their dedicated type-element properties directly.
+    # getattr(obj, "TextNoteType") can resolve to the CLR class object instead of the
+    # instance property in Python.NET 3.x when the property name matches the class name;
+    # direct attribute access via a lambda avoids that string-based lookup ambiguity.
+    for direct_probe in (
+        lambda e: e.TextNoteType,
+        lambda e: e.DimensionType,
+    ):
+        try:
+            type_obj = direct_probe(element)
+            if type_obj is not None:
+                type_name = safe_name(type_obj, fallback=fallback)
+                if is_valid_token_value(type_name):
+                    return type_name
+        except Exception:
+            pass
+
+    # Generic fallback: GetTypeId() → Document.GetElement() → .Name
     doc = getattr(element, "Document", None)
     if doc is None:
         return fallback

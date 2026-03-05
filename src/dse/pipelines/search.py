@@ -131,20 +131,26 @@ def collect_token_data_for_view(view, kind, tokens=None, include_element_report=
                 info["fill_region_name"] = value
                 group = "annotation_filled_regions"
             elif is_dimension(elem):
-                value = safe_name(getattr(elem, "DimensionType", None))
-                emitted = emit_token(token_store, "dim_style", value, "dim_style")
+                try:
+                    type_name = safe_name(elem.DimensionType)
+                except Exception:
+                    type_name = safe_type_name(elem)
+                emitted = emit_token(token_store, "dim_style", type_name, "dim_style")
                 if emitted is not None:
                     added_tokens.append(emitted)
-                info["dimension_style"] = value
-                info["dimension_type_name"] = safe_type_name(elem)
+                info["dimension_style"] = type_name
+                info["dimension_type_name"] = type_name
                 group = "annotation_dimensions"
             elif is_text_note(elem):
-                value = safe_name(getattr(elem, "TextNoteType", None))
-                emitted = emit_token(token_store, "text_type", value, "text_type")
+                try:
+                    type_name = safe_name(elem.TextNoteType)
+                except Exception:
+                    type_name = safe_type_name(elem)
+                emitted = emit_token(token_store, "text_type", type_name, "text_type")
                 if emitted is not None:
                     added_tokens.append(emitted)
-                info["text_type"] = value
-                info["text_type_name"] = safe_type_name(elem)
+                info["text_type"] = type_name
+                info["text_type_name"] = type_name
                 group = "annotation_text_notes"
             elif is_curve_annotation(elem):
                 value = safe_name(getattr(elem, "LineStyle", None))
