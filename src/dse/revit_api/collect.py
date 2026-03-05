@@ -2,6 +2,7 @@ import clr
 
 clr.AddReference("RevitAPI")
 from Autodesk.Revit.DB import (  # noqa: E402
+    BuiltInParameter,
     CategoryType,
     CurveElement,
     DetailCurve,
@@ -200,3 +201,22 @@ def is_curve_annotation(element):
 
 def is_view(element):
     return isinstance(element, View)
+
+
+def element_type_name_from_params(element):
+    """Return the Revit type name by reading built-in string parameters on the instance.
+
+    Bypasses type-element .Name access, which raises in Python.NET 3.x (Dynamo 2025).
+    ALL_MODEL_TYPE_NAME covers most element types (TextNote, Dimension, FilledRegion, …).
+    SYMBOL_NAME_PARAM covers FamilyInstance / AnnotationSymbol.
+    """
+    for bip in (BuiltInParameter.ALL_MODEL_TYPE_NAME, BuiltInParameter.SYMBOL_NAME_PARAM):
+        try:
+            param = element.get_Parameter(bip)
+            if param is not None:
+                val = param.AsString()
+                if val:
+                    return val
+        except Exception:
+            continue
+    return None

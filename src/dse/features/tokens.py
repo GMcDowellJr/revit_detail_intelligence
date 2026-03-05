@@ -95,6 +95,19 @@ def resolve_type_name(element, fallback="<unknown-type>"):
     except Exception:
         pass
 
+    # BuiltInParameter fallback: reads type name from instance string parameter, bypassing
+    # the Python.NET 3.x issue where .Name on Revit type elements raises an exception.
+    # Lazy import: collect.py is already loaded in the Dynamo context (imported by search.py);
+    # the try/except silently no-ops in unit-test contexts without the Revit API.
+    try:
+        from dse.revit_api.collect import element_type_name_from_params  # noqa: PLC0415
+
+        val = element_type_name_from_params(element)
+        if val and is_valid_token_value(val):
+            return val
+    except Exception:
+        pass
+
     return fallback
 
 
