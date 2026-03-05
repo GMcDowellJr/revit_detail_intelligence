@@ -166,6 +166,7 @@ If your Dynamo graph should call a stable script from your Documents checkout, u
 The thin runner:
 - resolves `%USERPROFILE%\Documents\revit_detail_intelligence` (with env-var expansion),
 - loads `src/dynamo_view_similarity.py` from that checkout,
+- temporarily adds the checkout import paths (repo root + `src/`) so `dse` imports resolve,
 - forwards the same `IN` array to the loaded script,
 - includes development module clearing (`RELOAD_MODULES = True`) so `dse` modules are re-imported fresh each run.
 

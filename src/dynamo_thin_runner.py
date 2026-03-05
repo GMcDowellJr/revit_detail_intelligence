@@ -66,15 +66,52 @@ def _candidate_entrypoints(repo_root):
     ]
 
 
+
+
+def _repo_root_from_entrypoint(path):
+    entry_dir = os.path.dirname(path)
+    if os.path.basename(entry_dir).lower() == "src":
+        return os.path.dirname(entry_dir)
+    return entry_dir
+
+
+def _project_import_paths(path):
+    repo_root = _repo_root_from_entrypoint(path)
+    src_root = os.path.join(repo_root, "src")
+    return [src_root, repo_root]
+
+
+def _push_import_paths(paths):
+    added = []
+    for candidate in paths:
+        if candidate and os.path.isdir(candidate) and candidate not in sys.path:
+            sys.path.insert(0, candidate)
+            added.append(candidate)
+    return added
+
+
+def _pop_import_paths(added):
+    for candidate in added:
+        try:
+            sys.path.remove(candidate)
+        except ValueError:
+            pass
+
 def _load_script_text(path):
     with open(path, "r") as f:
         return f.read()
 
 
 def _run_loaded_script(path, in_values):
-    scope = {"IN": in_values, "OUT": None}
+    scope = {"IN": in_values, "OUT": None, "__file__": path, "__name__": "__main__"}
     code = _load_script_text(path)
-    exec(compile(code, path, "exec"), scope, scope)
+
+    added_paths = _push_import_paths(_project_import_paths(path))
+    try:
+        exec(compile(code, path, "exec"), scope, scope)
+    finally:
+        _pop_import_paths(added_paths)
+
     return scope.get("OUT")
 
 
