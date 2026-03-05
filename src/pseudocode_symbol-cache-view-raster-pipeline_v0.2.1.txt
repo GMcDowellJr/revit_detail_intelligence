@@ -1,0 +1,902 @@
+# ============================================================
+# SYMBOL CACHE + VIEW RASTER PIPELINE  v0.2.1
+#
+# Scope:
+#   - Per-symbol cache to recover visual/shape signal for opaque Detail Item families
+#   - Full-view raster signatures for optional re-ranking (stage-2 only)
+#   - Integrates with existing feature-based pipeline (tokens/geom/fine) without mutating stage-1 scores
+#
+# Design goals:
+#   - Deterministic, reproducible, cacheable
+#   - Handles rotation, mirroring, uniform scale, and non-uniform (anisotropic) scale
+#   - Avoids "magic numbers" where possible; logs coverage so failures are diagnosable
+#
+# Core revisions vs v0.2.0:
+#   - Symbol identity is collision-resistant (name + identity hash), not name-only
+#   - validity_token is defined precisely (identity + export config + pipeline version)
+#   - Normalization supports uniform + anisotropic variants; descriptors can store both
+#   - Rotation and mirror invariance are first-class (descriptor-kind or multi-angle)
+#   - Connected-component filtering is adaptive per symbol (not solely global thresholds)
+#   - Stage-2 re-rank is constrained to a candidate band; adds raster support flags to confidence
+#   - Explicit coverage accounting for symbol cache and raster cache builds
+# ============================================================
+
+
+# ============================================================
+# SECTION 1: CONFIG AND POLICY
+# ============================================================
+
+CONFIG:
+
+  pipeline_version = "dse.pipeline.v0.2.1"
+
+  # -------------------------------
+  # Cache locations
+  # -------------------------------
+  symbol_cache_policy:
+    max_age_days         = None
+    max_entries          = None
+    invalidation         = "validity_token"
+    storage_path_pattern = "{user_docs}/detail_search_engine/cache/symbols/{project_slug}.symbols.json"
+
+  view_raster_cache_policy:
+    max_age_days         = 30
+    max_entries          = 20000
+    invalidation         = "validity_token"
+    storage_path_pattern = "{user_docs}/detail_search_engine/cache/views/{project_slug}.views.json"
+
+  # -------------------------------
+  # Symbol descriptor build policy
+  # -------------------------------
+  symbol_build:
+    prefer_family_doc = True
+    fallback_to_isolated_render = True
+
+    # Descriptor family
+    descriptor_kind = "zernike_mag"     # "zernike_mag" | "fourier_mag" | "edge_hist" | "phash" etc.
+    rotation_invariance:
+      mode = "descriptor"              # "descriptor" (rotation-invariant by construction) | "multi_angle"
+      angles_deg = [0, 90, 180, 270]   # used only if mode == "multi_angle"
+
+    mirror_invariance:
+      enabled = True                   # compute and store mirror descriptor variant
+
+    normalization:
+      output_px = 256
+      pad_px    = 8
+
+      # Store one or two normalized variants to handle anisotropic scaling
+      produce_variants = ["uniform", "anisotropic"]  # choose ["uniform"] if you want minimal complexity
+
+      # uniform: preserve aspect, pad to square, resize
+      # anisotropic: scale x and y independently to a canonical square
+      # NOTE: anisotropic normalization is for matching shapes that are stretched non-uniformly in-view
+      anisotropic:
+        enabled = True
+        max_stretch_ratio = 6.0        # guardrail: reject extreme warps that create false positives
+
+    cc_filtering:
+      # Adaptive policy per symbol:
+      #   - If one dominant CC exists, keep largest is OK (fast, stable)
+      #   - Else keep all CCs above area threshold ratio
+      policy = "adaptive"              # "largest" | "threshold" | "adaptive"
+      cc_min_area_ratio = 0.002        # fraction of total foreground pixels
+      dominant_ratio = 0.90            # if largest CC >= dominant_ratio of total, treat as single-body
+
+    preprocess:
+      mode = "edges"                   # "edges" | "binary"
+      edges:
+        detector = "canny"
+        canny_low  = 50
+        canny_high = 150
+        threshold  = 1                # for post-edge binarization
+      binary:
+        method = "adaptive"
+        block_size = 31
+        C = 3
+
+  # -------------------------------
+  # Isolated render (symbol) export config
+  # -------------------------------
+  symbol_isolated_render:
+    view_template_id = "<KNOWN_TEMPLATE_ID>"          # standardizes visibility/graphics
+    visibility_profile = "graphics_only"              # hide text/dims by default for symbol signature
+    crop_padding_ratio = 0.10
+    export_image_settings:
+      background = "white"
+      format = "PNG"
+      dpi = 300
+      # enforce fixed pixel export if supported; else approximate via dpi + crop size
+      output_px = 512
+
+  # -------------------------------
+  # View raster (full view) export config
+  # -------------------------------
+  view_raster_render:
+    enabled = True
+    visibility_profile = "graphics_only"              # recommended for matching; add "text_only" as aux if desired
+    view_template_id = "<KNOWN_TEMPLATE_ID>"
+    crop_strategy = "content_bbox"                    # "content_bbox" | "view_cropbox" | "fixed_frame"
+    crop_padding_ratio = 0.08
+    crop_categories = ["DetailItems", "Lines", "FilledRegions"]  # exclude Text/Dimensions for crop bbox
+    export_image_settings:
+      background = "white"
+      format = "PNG"
+      dpi = 300
+      output_px = 768
+
+  # -------------------------------
+  # Stage-2 re-rank constraints
+  # -------------------------------
+  stage2_rerank:
+    enabled = True
+    pool_top_k = 50                                  # only re-rank within top K from stage 1
+    band_mode = "top_k"                              # "top_k" | "score_delta"
+    score_delta = 0.10                               # used only if band_mode == "score_delta"
+    require_min_stage1_score = 0.25                  # do not let raster "rescue" extremely low stage-1 matches
+
+    # Only apply stage-2 if we have enough raster/symbol coverage
+    min_symbol_coverage = 0.70                       # fraction of symbols in view found in cache
+    min_view_raster_available = True                 # require query raster + candidate raster for re-rank
+
+  # -------------------------------
+  # Confidence policy
+  # -------------------------------
+  confidence_policy:
+    # Stage-1 confidence remains the primary tier.
+    # Raster adds support flags / secondary tier, never overrides stage-1 confidence upward by itself.
+    margin_high = 0.15
+    margin_med  = 0.07
+    raster_support_threshold = 0.90                  # similarity threshold meaning "strong visual support"
+
+
+# ============================================================
+# SECTION 2: DATA MODELS
+# ============================================================
+
+type SymbolKey:
+  family_name: str
+  type_name: str
+  # identifiers (optional; avoid requiring stable numeric ids)
+  family_id: int | null
+  symbol_id: int | null
+
+  # Collision-resistant identity hash (preferred)
+  # Examples of inputs (depending on what API can provide):
+  #   - family_unique_id GUID
+  #   - family doc path + last saved GUID
+  #   - hash of family contents when accessible
+  symbol_identity_hash: str           # e.g. sha1("family_guid|library_path|...")
+
+  # Stable string for human readability (NOT sufficient alone for cache identity)
+  display_key: str                   # "{family_name}|{type_name}"
+
+
+type DescriptorVariant:
+  variant_name: str                  # "uniform" or "anisotropic"
+  descriptor_kind: str
+  descriptor_vector: list[float]
+  descriptor_vector_mirror: list[float] | null
+  bbox_aspect: float
+  bbox_area_norm: float
+  pixel_density: float
+  cc_stats: dict                      # CC histogram, dominant_ratio, kept_count, etc.
+
+
+type SymbolDescriptor:
+  schema: str                         # "symbol_descriptor.v1"
+  key: SymbolKey
+  build_method: str                   # "family_doc" | "isolated_render"
+  build_time_utc: str
+
+  validity_token: str                 # defined in Section 3
+
+  source_fingerprint: dict            # reproducibility evidence (export config hash, template, pipeline version)
+  variants: dict[str, DescriptorVariant]  # keyed by variant_name
+
+  debug_preview_path: str | null
+
+
+type SymbolCache:
+  schema: str                         # "symbol_cache.v1"
+  corpus_id: str
+  pipeline_version: str
+  descriptors: dict[str, SymbolDescriptor]     # key = stable_cache_key(SymbolKey) (see Section 3)
+  stats: dict                                  # coverage + failure accounting (see Section 7)
+
+
+type ViewRasterSignature:
+  schema: str                         # "view_raster_sig.v1"
+  view_id: int
+  view_name: str
+  visibility_profile: str
+  crop_strategy: str
+  output_px: int
+  preprocess: dict
+  build_time_utc: str
+  validity_token: str
+
+  variants: dict[str, DescriptorVariant]       # same uniform/anisotropic variant concept
+  debug_preview_path: str | null
+
+
+type Stage1Result:
+  candidate_view_id: int
+  score_total: float
+  score_tokens: float
+  score_geom: float
+  score_fine: float
+  confidence_tier: str               # "LOW" | "MEDIUM" | "HIGH"
+  confidence_margin: float
+
+
+type Stage2Result:
+  candidate_view_id: int
+  score_stage1_total: float          # copied from Stage1Result
+  score_raster: float | null         # view raster similarity if available
+  score_symbols: float | null        # symbol multiset similarity if available
+  score_combined: float              # drives final ordering within rerank band only
+  confidence_raster_support: str      # "NONE" | "WEAK" | "STRONG"
+  notes: list[str]
+
+
+# ============================================================
+# SECTION 3: IDENTITY, KEYS, AND INVALIDATION
+# ============================================================
+
+function stable_cache_key(symbol_key: SymbolKey) -> str:
+  # Collision-resistant cache key:
+  # Use identity hash + display key for readability.
+  # Never rely on display_key alone.
+  return "sym:" + symbol_key.symbol_identity_hash + "|" + symbol_key.display_key
+
+function hash_config(obj) -> str:
+  # stable serialization then sha1/sha256
+  return sha1(stable_json_dumps(obj))
+
+function build_validity_token(identity_hash, export_config_hash, pipeline_version) -> str:
+  # Deterministic invalidation axes:
+  #  1) identity/content axis: identity_hash
+  #  2) export axis: export_config_hash (template, dpi, preprocess, normalization settings)
+  #  3) infra axis: pipeline_version
+  return sha1(identity_hash + "|" + export_config_hash + "|" + pipeline_version)
+
+function compute_symbol_export_config_hash(CONFIG) -> str:
+  return hash_config({
+    "pipeline_version": CONFIG.pipeline_version,
+    "symbol_isolated_render": CONFIG.symbol_isolated_render,
+    "symbol_build": CONFIG.symbol_build
+  })
+
+function compute_view_export_config_hash(CONFIG) -> str:
+  return hash_config({
+    "pipeline_version": CONFIG.pipeline_version,
+    "view_raster_render": CONFIG.view_raster_render,
+    "symbol_build": CONFIG.symbol_build.preprocess,       # reuse preprocess rules for descriptors
+    "normalization": CONFIG.symbol_build.normalization
+  })
+
+
+# ============================================================
+# SECTION 4: IMAGE / SHAPE HELPERS
+# ============================================================
+
+function raster_to_binary_or_edges(png_path, preprocess_cfg) -> Image2D:
+  img = load_png(png_path)
+  gray = to_grayscale(img)
+
+  if preprocess_cfg.mode == "edges":
+    edge = canny(gray, low=preprocess_cfg.edges.canny_low, high=preprocess_cfg.edges.canny_high)
+    bin  = threshold(edge, preprocess_cfg.edges.threshold)
+    return bin
+
+  if preprocess_cfg.mode == "binary":
+    bin = adaptive_threshold(gray, block_size=preprocess_cfg.binary.block_size, C=preprocess_cfg.binary.C)
+    return bin
+
+  raise ValueError("unknown preprocess mode")
+
+
+function connected_components_filter(bin_img, cc_cfg) -> (Image2D, dict):
+  # returns filtered image and stats
+  ccs = find_connected_components(bin_img)
+  areas = [cc.area for cc in ccs]
+  total = sum(areas)
+
+  if total == 0:
+    return (bin_img, {"cc_total": 0, "kept": 0, "reason": "no_foreground"})
+
+  largest = max(areas)
+  dominant_ratio = largest / total
+
+  if cc_cfg.policy == "largest":
+    keep = [cc_of_area(largest)]
+    return (render_ccs(keep), {"cc_total": len(ccs), "kept": 1, "dominant_ratio": dominant_ratio, "policy": "largest"})
+
+  if cc_cfg.policy == "threshold":
+    keep = [cc for cc in ccs if cc.area / total >= cc_cfg.cc_min_area_ratio]
+    return (render_ccs(keep), {"cc_total": len(ccs), "kept": len(keep), "dominant_ratio": dominant_ratio, "policy": "threshold"})
+
+  if cc_cfg.policy == "adaptive":
+    if dominant_ratio >= cc_cfg.dominant_ratio:
+      keep = [cc_of_area(largest)]
+      policy_used = "largest"
+    else:
+      keep = [cc for cc in ccs if cc.area / total >= cc_cfg.cc_min_area_ratio]
+      policy_used = "threshold"
+    return (render_ccs(keep), {"cc_total": len(ccs), "kept": len(keep), "dominant_ratio": dominant_ratio, "policy": policy_used})
+
+  raise ValueError("unknown cc policy")
+
+
+function normalize_image_variant(bin_img, variant_name, norm_cfg) -> Image2D:
+  # Steps:
+  #  1) CC filter (adaptive)
+  #  2) bbox crop to foreground
+  #  3) pad
+  #  4) scale (uniform or anisotropic)
+  #  5) center foreground
+
+  (filtered, cc_stats) = connected_components_filter(bin_img, CONFIG.symbol_build.cc_filtering)
+
+  bbox = bbox_of_foreground(filtered)
+  if bbox is null:
+    return null
+
+  cropped = crop(filtered, bbox)
+  padded = pad_to_square(cropped, pad_px=norm_cfg.pad_px)
+
+  if variant_name == "uniform":
+    resized = resize_preserve_aspect(padded, norm_cfg.output_px, norm_cfg.output_px)   # pad if needed
+  elif variant_name == "anisotropic":
+    # scale X and Y independently to fill the square
+    # guardrail: reject extreme warp beyond max_stretch_ratio
+    (sx, sy) = compute_anisotropic_scale(padded, norm_cfg.output_px)
+    if max(sx/sy, sy/sx) > CONFIG.symbol_build.normalization.anisotropic.max_stretch_ratio:
+      resized = resize_preserve_aspect(padded, norm_cfg.output_px, norm_cfg.output_px) # fallback to uniform
+    else:
+      resized = resize(padded, norm_cfg.output_px, norm_cfg.output_px)
+  else:
+    raise ValueError
+
+  centered = recenter_foreground(resized)
+  centered._cc_stats = cc_stats
+  return centered
+
+
+function compute_descriptor(bin_img_norm, descriptor_kind, rotation_cfg) -> list[float]:
+  if rotation_cfg.mode == "descriptor":
+    # Use rotation-invariant descriptor directly (e.g. Zernike magnitudes)
+    return descriptor_rotation_invariant(bin_img_norm, descriptor_kind)
+
+  if rotation_cfg.mode == "multi_angle":
+    # Compute descriptor on several rotated versions; store concatenation or choose canonical ordering
+    # For similarity, we will use max-over-angles matching (see similarity section)
+    descs = []
+    for a in rotation_cfg.angles_deg:
+      img_r = rotate(bin_img_norm, a)
+      descs.append(descriptor_not_rotation_invariant(img_r, descriptor_kind))
+    # Store as list-of-vectors flattened with separators, or as list form
+    return flatten_multi_angle(descs)
+
+  raise ValueError
+
+
+function compute_variant_descriptors(bin_img_norm, cfg) -> (list[float], list[float] | null):
+  D = compute_descriptor(bin_img_norm, cfg.descriptor_kind, cfg.rotation_invariance)
+  if cfg.mirror_invariance.enabled:
+    img_m = flip_x(bin_img_norm)
+    Dm = compute_descriptor(img_m, cfg.descriptor_kind, cfg.rotation_invariance)
+    return (D, Dm)
+  return (D, null)
+
+
+function summarize_norm_stats(bin_img_norm) -> dict:
+  bbox = bbox_of_foreground(bin_img_norm)
+  if bbox is null:
+    return {"bbox_aspect": 0.0, "bbox_area_norm": 0.0, "pixel_density": 0.0}
+  return {
+    "bbox_aspect": bbox.width / max(bbox.height, 1e-9),
+    "bbox_area_norm": (bbox.width * bbox.height) / (CONFIG.symbol_build.normalization.output_px ** 2),
+    "pixel_density": foreground_density(bin_img_norm),
+    "cc_stats": getattr(bin_img_norm, "_cc_stats", {})
+  }
+
+
+# ============================================================
+# SECTION 5: SYMBOL CACHE BUILD — MODE A (FAMILY-DOC EXTRACTION)
+# ============================================================
+
+function build_symbol_descriptor_family_doc(project_doc, symbol_key: SymbolKey) -> SymbolDescriptor | Failure:
+  # Best-effort: extract any accessible symbolic curves/regions in family context
+  # If empty/unsupported, caller can fallback to isolated render.
+
+  export_hash = compute_symbol_export_config_hash(CONFIG)
+  validity = build_validity_token(symbol_key.symbol_identity_hash, export_hash, CONFIG.pipeline_version)
+
+  try:
+    fam_doc = open_family_document(project_doc, symbol_key)    # placeholder API
+    if fam_doc is null:
+      return Failure("family_doc_open_failed")
+
+    primitives = extract_symbolic_primitives(fam_doc, symbol_key)
+    # primitives should include any accessible:
+    #   - symbolic lines/curves
+    #   - masking/filled regions (if exposed)
+    # Return should be deterministic
+
+    if primitives.is_empty():
+      return Failure("family_doc_no_primitives")
+
+    # Convert primitives to raster-like binary (unifies descriptor pipeline)
+    bin_img_raw = rasterize_primitives_to_binary(primitives, px=CONFIG.symbol_build.normalization.output_px*2)
+
+    variants = {}
+    for v in CONFIG.symbol_build.normalization.produce_variants:
+      img_n = normalize_image_variant(bin_img_raw, v, CONFIG.symbol_build.normalization)
+      if img_n is null:
+        continue
+      (D, Dm) = compute_variant_descriptors(img_n, CONFIG.symbol_build)
+      stats = summarize_norm_stats(img_n)
+      variants[v] = DescriptorVariant(
+        variant_name=v,
+        descriptor_kind=CONFIG.symbol_build.descriptor_kind,
+        descriptor_vector=D,
+        descriptor_vector_mirror=Dm,
+        bbox_aspect=stats.bbox_aspect,
+        bbox_area_norm=stats.bbox_area_norm,
+        pixel_density=stats.pixel_density,
+        cc_stats=stats.cc_stats
+      )
+
+    if variants is empty:
+      return Failure("family_doc_normalization_failed")
+
+    return SymbolDescriptor(
+      schema="symbol_descriptor.v1",
+      key=symbol_key,
+      build_method="family_doc",
+      build_time_utc=utc_now(),
+      validity_token=validity,
+      source_fingerprint={
+        "pipeline_version": CONFIG.pipeline_version,
+        "export_config_hash": export_hash,
+        "descriptor_kind": CONFIG.symbol_build.descriptor_kind,
+        "rotation_invariance": CONFIG.symbol_build.rotation_invariance,
+        "mirror_invariance": CONFIG.symbol_build.mirror_invariance,
+        "normalization": CONFIG.symbol_build.normalization,
+        "cc_filtering": CONFIG.symbol_build.cc_filtering,
+        "preprocess": CONFIG.symbol_build.preprocess,
+        "primitive_summary": primitives.summary()
+      },
+      variants=variants,
+      debug_preview_path=null
+    )
+
+  finally:
+    safe_close_family_doc_if_open()
+
+
+# ============================================================
+# SECTION 6: SYMBOL CACHE BUILD — MODE B (ISOLATED RENDER + DESCRIPTOR)
+# ============================================================
+
+function build_symbol_descriptor_isolated_render(project_doc, symbol_key: SymbolKey) -> SymbolDescriptor | Failure:
+  export_hash = compute_symbol_export_config_hash(CONFIG)
+  validity = build_validity_token(symbol_key.symbol_identity_hash, export_hash, CONFIG.pipeline_version)
+
+  tmp_view = null
+  tmp_inst = null
+  png_path = null
+
+  try:
+    tmp_view = create_temp_drafting_view(project_doc, template_id=CONFIG.symbol_isolated_render.view_template_id)
+    if tmp_view is null:
+      return Failure("tmp_view_create_failed")
+
+    sym = resolve_family_symbol(project_doc, symbol_key)
+    if sym is null:
+      return Failure("symbol_resolve_failed")
+
+    ensure_symbol_activated(sym)                       # must be transacted in real API
+
+    tmp_inst = place_detail_item_instance(tmp_view, sym, point=(0,0,0))
+    if tmp_inst is null:
+      return Failure("place_instance_failed")
+
+    apply_visibility_profile(tmp_view, CONFIG.symbol_isolated_render.visibility_profile)
+    isolate_elements_temporarily(tmp_view, [tmp_inst.id])
+
+    crop_bbox = element_bbox_in_view(tmp_inst, tmp_view)
+    if crop_bbox is null:
+      crop_bbox = default_crop_box_around_origin()
+
+    set_view_crop_box(tmp_view, expand_bbox(crop_bbox, CONFIG.symbol_isolated_render.crop_padding_ratio))
+
+    png_path = export_view_png(project_doc, tmp_view, CONFIG.symbol_isolated_render.export_image_settings)
+    if png_path is null or not file_exists(png_path):
+      return Failure("png_export_failed")
+
+    bin_img_raw = raster_to_binary_or_edges(png_path, CONFIG.symbol_build.preprocess)
+
+    variants = {}
+    for v in CONFIG.symbol_build.normalization.produce_variants:
+      img_n = normalize_image_variant(bin_img_raw, v, CONFIG.symbol_build.normalization)
+      if img_n is null:
+        continue
+      (D, Dm) = compute_variant_descriptors(img_n, CONFIG.symbol_build)
+      stats = summarize_norm_stats(img_n)
+      variants[v] = DescriptorVariant(
+        variant_name=v,
+        descriptor_kind=CONFIG.symbol_build.descriptor_kind,
+        descriptor_vector=D,
+        descriptor_vector_mirror=Dm,
+        bbox_aspect=stats.bbox_aspect,
+        bbox_area_norm=stats.bbox_area_norm,
+        pixel_density=stats.pixel_density,
+        cc_stats=stats.cc_stats
+      )
+
+    if variants is empty:
+      return Failure("symbol_normalization_failed")
+
+    return SymbolDescriptor(
+      schema="symbol_descriptor.v1",
+      key=symbol_key,
+      build_method="isolated_render",
+      build_time_utc=utc_now(),
+      validity_token=validity,
+      source_fingerprint={
+        "pipeline_version": CONFIG.pipeline_version,
+        "export_config_hash": export_hash,
+        "view_template_id": CONFIG.symbol_isolated_render.view_template_id,
+        "visibility_profile": CONFIG.symbol_isolated_render.visibility_profile,
+        "export_settings": CONFIG.symbol_isolated_render.export_image_settings,
+        "descriptor_kind": CONFIG.symbol_build.descriptor_kind,
+        "rotation_invariance": CONFIG.symbol_build.rotation_invariance,
+        "mirror_invariance": CONFIG.symbol_build.mirror_invariance,
+        "normalization": CONFIG.symbol_build.normalization,
+        "cc_filtering": CONFIG.symbol_build.cc_filtering,
+        "preprocess": CONFIG.symbol_build.preprocess
+      },
+      variants=variants,
+      debug_preview_path=(png_path if keep_previews_enabled() else null)
+    )
+
+  finally:
+    safe_delete_view(tmp_view)
+    safe_delete_file_if_not_kept(png_path)
+
+
+# ============================================================
+# SECTION 7: SYMBOL CACHE ORCHESTRATION + COVERAGE ACCOUNTING
+# ============================================================
+
+function build_symbol_cache(project_doc, symbol_keys: list[SymbolKey], corpus_id: str) -> SymbolCache:
+  cache = load_or_create_symbol_cache(corpus_id)
+  export_hash = compute_symbol_export_config_hash(CONFIG)
+
+  failures = []
+  method_counts = {"family_doc": 0, "isolated_render": 0}
+  near_empty = 0
+
+  for key in symbol_keys:
+    skey = stable_cache_key(key)
+    expected_validity = build_validity_token(key.symbol_identity_hash, export_hash, CONFIG.pipeline_version)
+
+    if skey in cache.descriptors and cache.descriptors[skey].validity_token == expected_validity:
+      continue
+
+    # Build descriptor
+    desc = Failure("not_attempted")
+    if CONFIG.symbol_build.prefer_family_doc:
+      desc = build_symbol_descriptor_family_doc(project_doc, key)
+
+    if is_failure(desc) and CONFIG.symbol_build.fallback_to_isolated_render:
+      desc = build_symbol_descriptor_isolated_render(project_doc, key)
+
+    if is_failure(desc):
+      failures.append({"symbol": skey, "reason": desc.reason})
+      continue
+
+    # Diagnostics: near-empty descriptor (e.g., no foreground after preprocessing)
+    if any(variant.pixel_density < 0.001 for variant in desc.variants.values()):
+      near_empty += 1
+
+    cache.descriptors[skey] = desc
+    method_counts[desc.build_method] += 1
+
+  cache.stats = {
+    "corpus_id": corpus_id,
+    "pipeline_version": CONFIG.pipeline_version,
+    "export_config_hash": export_hash,
+    "symbols_total": len(symbol_keys),
+    "symbols_cached": len(cache.descriptors),
+    "symbols_built_family_doc": method_counts["family_doc"],
+    "symbols_built_isolated_render": method_counts["isolated_render"],
+    "symbols_near_empty": near_empty,
+    "failures_count": len(failures),
+    "failure_samples": failures[0:25]
+  }
+
+  save_symbol_cache(cache)
+  return cache
+
+
+function symbol_coverage_for_view(view_symbol_keys: multiset[SymbolKey], cache: SymbolCache) -> float:
+  # coverage = fraction of symbol instances whose type keys are present in cache
+  total = sum_counts(view_symbol_keys)
+  if total == 0:
+    return 1.0
+  have = 0
+  for k,count in view_symbol_keys.items():
+    if stable_cache_key(k) in cache.descriptors:
+      have += count
+  return have / total
+
+
+# ============================================================
+# SECTION 8: VIEW RASTER RENDER + NORMALIZATION PIPELINE
+# ============================================================
+
+function render_view_png_standard(project_doc, view, render_cfg) -> str | Failure:
+  tmp_view = null
+  try:
+    tmp_view = duplicate_view_for_export(view)
+    apply_view_template(tmp_view, render_cfg.view_template_id)
+    apply_visibility_profile(tmp_view, render_cfg.visibility_profile)
+
+    if render_cfg.crop_strategy == "content_bbox":
+      elems = collect_elements_for_crop(tmp_view, render_cfg.crop_categories)
+      bbox = union_bbox([element_bbox_in_view(e, tmp_view) for e in elems if bbox exists])
+      if bbox is null:
+        bbox = fallback_crop_box(tmp_view)
+      set_view_crop_box(tmp_view, expand_bbox(bbox, render_cfg.crop_padding_ratio))
+
+    elif render_cfg.crop_strategy == "view_cropbox":
+      ensure_crop_enabled(tmp_view)
+
+    elif render_cfg.crop_strategy == "fixed_frame":
+      set_view_crop_box(tmp_view, fixed_box(render_cfg.fixed_frame_size))
+
+    else:
+      return Failure("unknown_crop_strategy")
+
+    png_path = export_view_png(project_doc, tmp_view, render_cfg.export_image_settings)
+    if png_path is null or not file_exists(png_path):
+      return Failure("view_png_export_failed")
+
+    return png_path
+
+  finally:
+    safe_delete_view(tmp_view)
+
+
+function build_view_raster_signature(project_doc, view, corpus_id) -> ViewRasterSignature | Failure:
+  if not CONFIG.view_raster_render.enabled:
+    return Failure("view_raster_disabled")
+
+  export_hash = compute_view_export_config_hash(CONFIG)
+  validity = build_validity_token(identity_hash=str(view.id), export_config_hash=export_hash, pipeline_version=CONFIG.pipeline_version)
+
+  png_path = render_view_png_standard(project_doc, view, CONFIG.view_raster_render)
+  if is_failure(png_path):
+    return png_path
+
+  try:
+    bin_img_raw = raster_to_binary_or_edges(png_path, CONFIG.symbol_build.preprocess)
+
+    variants = {}
+    for v in CONFIG.symbol_build.normalization.produce_variants:
+      img_n = normalize_image_variant(bin_img_raw, v, CONFIG.symbol_build.normalization)
+      if img_n is null:
+        continue
+      (D, Dm) = compute_variant_descriptors(img_n, CONFIG.symbol_build)
+      stats = summarize_norm_stats(img_n)
+      variants[v] = DescriptorVariant(
+        variant_name=v,
+        descriptor_kind=CONFIG.symbol_build.descriptor_kind,
+        descriptor_vector=D,
+        descriptor_vector_mirror=Dm,
+        bbox_aspect=stats.bbox_aspect,
+        bbox_area_norm=stats.bbox_area_norm,
+        pixel_density=stats.pixel_density,
+        cc_stats=stats.cc_stats
+      )
+
+    if variants is empty:
+      return Failure("view_raster_normalization_failed")
+
+    return ViewRasterSignature(
+      schema="view_raster_sig.v1",
+      view_id=view.id,
+      view_name=view.name,
+      visibility_profile=CONFIG.view_raster_render.visibility_profile,
+      crop_strategy=CONFIG.view_raster_render.crop_strategy,
+      output_px=CONFIG.symbol_build.normalization.output_px,
+      preprocess=CONFIG.symbol_build.preprocess,
+      build_time_utc=utc_now(),
+      validity_token=validity,
+      variants=variants,
+      debug_preview_path=(png_path if keep_previews_enabled() else null)
+    )
+
+  finally:
+    safe_delete_file_if_not_kept(png_path)
+
+
+# ============================================================
+# SECTION 9: SIMILARITY (MIRROR / ROTATION / VARIANTS)
+# ============================================================
+
+function cosine_sim(a: list[float], b: list[float]) -> float:
+  return cosine(a,b)
+
+function descriptor_similarity_variant(A: DescriptorVariant, B: DescriptorVariant, rotation_cfg) -> float:
+  # mirror handling
+  sim1 = cosine_sim(A.descriptor_vector, B.descriptor_vector)
+  if A.descriptor_vector_mirror is null or B.descriptor_vector_mirror is null:
+    return sim1
+  sim2 = cosine_sim(A.descriptor_vector, B.descriptor_vector_mirror)
+  return max(sim1, sim2)
+
+function descriptor_similarity_best_of_variants(A_variants, B_variants) -> float:
+  # Compare uniform-to-uniform, uniform-to-aniso, aniso-to-uniform, aniso-to-aniso; take max.
+  best = -inf
+  for va in A_variants.values():
+    for vb in B_variants.values():
+      best = max(best, descriptor_similarity_variant(va, vb, CONFIG.symbol_build.rotation_invariance))
+  return best
+
+function view_raster_similarity(sigA: ViewRasterSignature, sigB: ViewRasterSignature) -> float:
+  return descriptor_similarity_best_of_variants(sigA.variants, sigB.variants)
+
+function symbol_similarity(symA: SymbolDescriptor, symB: SymbolDescriptor) -> float:
+  return descriptor_similarity_best_of_variants(symA.variants, symB.variants)
+
+
+# ============================================================
+# SECTION 10: VIEW-LEVEL SYMBOL MULTISET SIGNATURES
+# ============================================================
+
+function aggregate_symbol_descriptors(view_symbols: multiset[SymbolKey], cache: SymbolCache) -> list[float] | Failure:
+  # Minimal robust approach:
+  #  - Expand multiset into descriptor vectors (choose a primary variant, e.g. uniform)
+  #  - Weighted aggregate (counts) + optionally second moment
+  #  - Returns one vector for cosine comparison
+  #
+  # NOTE: This is not bipartite matching; it is a bag-level signature.
+
+  vectors = []
+  weights = []
+  for k,count in view_symbols.items():
+    skey = stable_cache_key(k)
+    if skey not in cache.descriptors:
+      continue
+    sym = cache.descriptors[skey]
+    # choose variant priority: prefer uniform; fallback to any available
+    v = sym.variants.get("uniform") or first(sym.variants.values())
+    vectors.append(v.descriptor_vector)
+    weights.append(count)
+
+  if vectors is empty:
+    return Failure("no_cached_symbols")
+
+  return weighted_average(vectors, weights)
+
+
+function symbol_multiset_similarity(viewA_symbols, viewB_symbols, cache) -> float | null:
+  vecA = aggregate_symbol_descriptors(viewA_symbols, cache)
+  vecB = aggregate_symbol_descriptors(viewB_symbols, cache)
+  if is_failure(vecA) or is_failure(vecB):
+    return null
+  return cosine_sim(vecA, vecB)
+
+
+# ============================================================
+# SECTION 11: TWO-STAGE INTEGRATION (STAGE 1 LOCKED; STAGE 2 CONSTRAINED)
+# ============================================================
+
+function stage2_rerank(query_view, stage1_results: list[Stage1Result], cache: SymbolCache, view_raster_cache) -> list[Stage2Result]:
+  # Stage 2 only considers a constrained candidate band
+  pool = select_rerank_pool(stage1_results, CONFIG.stage2_rerank)
+
+  # Build query rasters if required
+  query_sig = view_raster_cache.get(query_view.id)
+  if query_sig is null and CONFIG.stage2_rerank.min_view_raster_available:
+    query_sig = build_view_raster_signature(project_doc, query_view, corpus_id="<corpus>")
+    view_raster_cache.put(query_view.id, query_sig)
+
+  # Build query symbol coverage
+  query_symbols = extract_view_symbol_multiset(query_view)      # from stage-1 feature extraction
+  query_cov = symbol_coverage_for_view(query_symbols, cache)
+
+  outputs = []
+  for r in pool:
+    notes = []
+    if r.score_total < CONFIG.stage2_rerank.require_min_stage1_score:
+      outputs.append(Stage2Result(
+        candidate_view_id=r.candidate_view_id,
+        score_stage1_total=r.score_total,
+        score_raster=null,
+        score_symbols=null,
+        score_combined=r.score_total,
+        confidence_raster_support="NONE",
+        notes=["stage1_below_min; no rerank"]
+      ))
+      continue
+
+    cand_view = resolve_view(r.candidate_view_id)
+
+    # Symbols similarity (optional)
+    cand_symbols = extract_view_symbol_multiset(cand_view)
+    cand_cov = symbol_coverage_for_view(cand_symbols, cache)
+
+    score_symbols = null
+    if min(query_cov, cand_cov) >= CONFIG.stage2_rerank.min_symbol_coverage:
+      score_symbols = symbol_multiset_similarity(query_symbols, cand_symbols, cache)
+    else:
+      notes.append("low_symbol_coverage")
+
+    # View raster similarity (optional)
+    score_raster = null
+    cand_sig = view_raster_cache.get(cand_view.id)
+    if cand_sig is null and CONFIG.stage2_rerank.min_view_raster_available:
+      cand_sig = build_view_raster_signature(project_doc, cand_view, corpus_id="<corpus>")
+      view_raster_cache.put(cand_view.id, cand_sig)
+
+    if query_sig is not null and cand_sig is not null:
+      score_raster = view_raster_similarity(query_sig, cand_sig)
+    else:
+      notes.append("missing_view_raster")
+
+    # Combine within rerank band only
+    # IMPORTANT: stage-1 score_total is never mutated; stage-2 produces score_combined for ordering inside band.
+    # Keep combination conservative; do not let raster overpower stage-1 semantics.
+    score_combined = r.score_total
+
+    if score_raster is not null:
+      score_combined = 0.70 * r.score_total + 0.30 * score_raster
+
+    if score_symbols is not null:
+      score_combined = 0.60 * score_combined + 0.40 * score_symbols
+
+    # Raster support flag (secondary confidence evidence)
+    support = "NONE"
+    if score_raster is not null:
+      if score_raster >= CONFIG.confidence_policy.raster_support_threshold:
+        support = "STRONG"
+      elif score_raster >= 0.75:
+        support = "WEAK"
+
+    outputs.append(Stage2Result(
+      candidate_view_id=r.candidate_view_id,
+      score_stage1_total=r.score_total,
+      score_raster=score_raster,
+      score_symbols=score_symbols,
+      score_combined=score_combined,
+      confidence_raster_support=support,
+      notes=notes
+    ))
+
+  # Re-rank only within pool; preserve relative order of non-pooled results
+  return merge_reranked_pool_back(stage1_results, outputs)
+
+
+# ============================================================
+# SECTION 12: NOTES ON FALSE POSITIVES / FALSE NEGATIVES
+# ============================================================
+
+# False positives (different details look similar):
+#   - mitigated by: excluding text/dims from crop bbox and visibility_profile "graphics_only"
+#   - mitigated by: anisotropic variant guardrail + CC adaptive filtering
+#   - mitigated by: restricting stage-2 rerank band and requiring minimum stage-1 score
+
+# False negatives (same detail with rotation/mirror/scale):
+#   - mitigated by: mirror descriptor and rotation invariance (descriptor-based or multi-angle)
+#   - mitigated by: anisotropic normalization variant
+#   - mitigated by: taking best-of across variants in similarity
+
+# Debuggability:
+#   - cache.stats provides coverage, method breakdown, and failure samples
+#   - per-descriptor cc_stats and pixel_density help identify empty/over-filtered rasters
