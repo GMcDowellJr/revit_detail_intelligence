@@ -14,4 +14,21 @@ def test_to_dynamo_score_list_field_order():
     ]
 
     rows = to_dynamo_score_list(results)
-    assert rows == [[0.93, 42, 0.88, 0.70, "HIGH", 0.91]]
+    assert rows == [
+        [
+            "score_geom",
+            "candidate_view_id",
+            "score_tokens",
+            "score_fine",
+            "confidence_tier",
+            "score_total",
+        ],
+        [0.93, 42, 0.88, 0.70, "HIGH", 0.91],
+    ]
+
+
+def test_to_dynamo_score_list_can_omit_header():
+    rows = to_dynamo_score_list(
+        [{"candidate_view_id": 1, "score_geom": 0.1}], include_header=False
+    )
+    assert rows == [[0.1, 1, 0.0, 0.0, "LOW", 0.0]]

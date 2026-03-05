@@ -23,6 +23,30 @@ def _float_close(a, b, eps=EPS):
 
 def _compare_results(old, new):
     deltas = []
+    if isinstance(new, list) and new and isinstance(new[0], list):
+        header = new[0]
+        body = new[1:]
+        idx = {name: i for i, name in enumerate(header)}
+        expected = [
+            "score_geom",
+            "candidate_view_id",
+            "score_tokens",
+            "score_fine",
+            "confidence_tier",
+            "score_total",
+        ]
+        if all(name in idx for name in expected):
+            new = [
+                {
+                    "score_geom": row[idx["score_geom"]],
+                    "candidate_view_id": row[idx["candidate_view_id"]],
+                    "score_tokens": row[idx["score_tokens"]],
+                    "score_fine": row[idx["score_fine"]],
+                    "confidence_tier": row[idx["confidence_tier"]],
+                    "score_total": row[idx["score_total"]],
+                }
+                for row in body
+            ]
     if isinstance(new, dict) and "results" in new:
         new = new.get("results")
 

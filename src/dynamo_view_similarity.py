@@ -38,15 +38,4 @@ elif query_view is None:
     }
 else:
     results = find_similar_views(query_view, corpus_views, top_n)
-    OUT = {
-        "results": results,
-        "dynamo_list": to_dynamo_score_list(results),
-        "dynamo_list_schema": [
-            "score_geom",
-            "candidate_view_id",
-            "score_tokens",
-            "score_fine",
-            "confidence_tier",
-            "score_total",
-        ],
-    }
+    OUT = to_dynamo_score_list(results, include_header=True)

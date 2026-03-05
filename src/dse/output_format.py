@@ -1,11 +1,23 @@
-def to_dynamo_score_list(results):
+SCORE_LIST_SCHEMA = [
+    "score_geom",
+    "candidate_view_id",
+    "score_tokens",
+    "score_fine",
+    "confidence_tier",
+    "score_total",
+]
+
+
+def to_dynamo_score_list(results, include_header=True):
     """Return Dynamo-friendly score rows in a stable field order.
 
     Row order:
       [score_geom, candidate_view_id, score_tokens, score_fine, confidence_tier, score_total]
+
+    When ``include_header`` is True, the first row is the string schema.
     """
 
-    rows = []
+    rows = [list(SCORE_LIST_SCHEMA)] if include_header else []
     for row in results:
         rows.append(
             [
