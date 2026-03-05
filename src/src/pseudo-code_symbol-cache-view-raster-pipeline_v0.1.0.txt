@@ -1,0 +1,412 @@
+PSEUDOCODE: Symbol Cache + View Raster Pipeline
+Scope:
+- Symbol cache supports two build modes:
+  (A) Family-document extraction (vector-ish, when accessible)
+  (B) Isolated render in a temp drafting view + descriptor (visual, robust)
+- View raster pipeline renders standardized PNGs and normalizes them for similarity
+- This is pseudocode: no API calls spelled exactly; treat Revit-specific calls as placeholders.
+
+============================================================
+DATA MODELS
+============================================================
+
+type SymbolKey:
+  family_id: int
+  symbol_id: int
+  family_name: str
+  type_name: str
+
+type SymbolDescriptor:
+  schema: str                        # e.g. "symbol_descriptor.v1"
+  key: SymbolKey
+  build_method: str                  # "family_doc" or "isolated_render"
+  build_time_utc: str
+  source_fingerprint: dict           # info for reproducibility (view template id, export settings, etc.)
+
+  # Primary descriptor for matching
+  descriptor_vector: list[float]     # e.g., Zernike magnitudes or Fourier magnitudes
+  descriptor_kind: str               # "zernike_mag" | "fourier_mag" | "edge_hist" | etc.
+
+  # Optional auxiliary signals
+  bbox_aspect: float
+  bbox_area_norm: float
+  pixel_density: float               # % foreground after normalization
+  debug_preview_path: str | null      # optional saved PNG
+
+type SymbolCache:
+  schema: str                        # "symbol_cache.v1"
+  corpus_id: str                     # identifies corpus/run
+  descriptors: dict[str, SymbolDescriptor]  # key = stable string form of SymbolKey
+  stats: dict                        # counts, failures, etc.
+
+type ViewRasterSignature:
+  schema: str                        # "view_raster_sig.v1"
+  view_id: int
+  view_name: str
+
+  # Multi-channel or single-channel processed images
+  image_kind: str                    # "edges" or "binary" or "multichannel"
+  descriptor_kind: str               # same family as symbol descriptor, if desired
+  descriptor_vector: list[float]
+
+  # Normalization metadata for reproducibility
+  crop_strategy: str                 # "content_bbox" | "view_cropbox" | "fixed_frame"
+  visibility_profile: str            # "graphics_only" | "full"
+  output_px: int                     # e.g., 512
+  preprocess: dict                   # thresholding, edge detect params
+  build_time_utc: str
+
+
+============================================================
+UTILITY HELPERS (IMAGE / SHAPE)
+============================================================
+
+function raster_to_binary_or_edges(png_path, preprocess_config) -> Image2D:
+  img = load_png(png_path)
+  img_gray = to_grayscale(img)
+  if preprocess_config.mode == "edges":
+    edge = edge_detect(img_gray, preprocess_config.edge_params)
+    bin = threshold(edge, preprocess_config.edge_threshold)
+    return bin
+  else:
+    bin = adaptive_threshold(img_gray, preprocess_config.thresh_params)
+    return bin
+
+function normalize_image(bin_img, output_px, pad_px, keep_largest_cc) -> Image2D:
+  if keep_largest_cc:
+    bin_img = keep_largest_connected_component(bin_img)
+  bbox = bounding_box_of_foreground(bin_img)
+  cropped = crop(bin_img, bbox)
+  padded = pad_to_square(cropped, pad_px)
+  resized = resize(padded, output_px, output_px)
+  centered = recenter_foreground(resized)
+  return centered
+
+function affine_whiten_foreground_points(bin_img) -> list[Point2D]:
+  pts = foreground_pixel_coords(bin_img)  # list of (x,y)
+  mu = mean(pts)
+  Sigma = covariance_matrix(pts - mu)
+  W = inverse_sqrt_2x2(Sigma)            # Σ^{-1/2}
+  pts_w = [ W * (p - mu) for p in pts ]
+  return pts_w
+
+function compute_rotation_invariant_descriptor(bin_img, descriptor_kind) -> list[float]:
+  # Choose one:
+  if descriptor_kind == "zernike_mag":
+    # compute Zernike moments; return magnitudes only
+    return zernike_magnitudes(bin_img)
+  if descriptor_kind == "fourier_mag":
+    contour = extract_outer_contour(bin_img)
+    contour_samples = resample_contour_uniform(contour, n=256)
+    F = dft(contour_samples)
+    return magnitudes(F[1:K])           # drop DC; keep first K harmonics
+  if descriptor_kind == "edge_hist":
+    return oriented_edge_histogram(bin_img)
+  raise ValueError
+
+function mirror_descriptor_strategy(bin_img, descriptor_kind) -> tuple[list[float], list[float]]:
+  D = compute_rotation_invariant_descriptor(bin_img, descriptor_kind)
+  bin_m = flip_x(bin_img)
+  Dm = compute_rotation_invariant_descriptor(bin_m, descriptor_kind)
+  return (D, Dm)
+
+
+============================================================
+SYMBOL CACHE BUILD - MODE A: FAMILY-DOC EXTRACTION
+============================================================
+
+function build_symbol_descriptor_family_doc(doc, symbol_key, config) -> SymbolDescriptor | Failure:
+  # doc = active project document
+  family = doc.get_element(symbol_key.family_id)
+  if family is null:
+    return Failure("family missing")
+
+  fam_doc = doc.edit_family(family)                     # open family document
+  if fam_doc is null:
+    return Failure("edit_family failed")
+
+  # Identify representation scope
+  # For annotation/detail item families, internal "symbolic lines" may exist,
+  # filled regions may be represented as masking/regions not always accessible like FilledRegion.
+  # This mode is "best effort": extract curves/lines where API exposes them.
+
+  extracted_curves = []
+  extracted_regions = []
+  extracted_masks = []
+  extracted_meta = {}
+
+  for elem in fam_doc.elements:
+    if elem is symbolic_line_or_curve:
+      extracted_curves.extend(curves_from_symbolic_line(elem))
+    if elem is masking_region_like:
+      extracted_regions.append(region_boundary_curves(elem))
+    # add other accessible primitives as needed
+
+  if extracted_curves and extracted_regions are both empty:
+    # family-doc extraction provides nothing; caller may fallback to isolated render mode
+    close_document(fam_doc, discard=True)
+    return Failure("no extractable primitives in family doc")
+
+  # Convert extracted primitives into a canonical descriptor
+  # Option A: Convert curves to synthetic raster grid -> normalize -> descriptor
+  # Option B: Build a vector descriptor directly (endpoint graph), then normalize
+  # Here we unify by rasterizing into a small binary image so descriptor is consistent across modes.
+
+  bin_img = rasterize_curves_and_regions_to_binary(extracted_curves, extracted_regions, config.rasterize_px)
+  bin_img_n = normalize_image(bin_img, config.output_px, config.pad_px, keep_largest_cc=True)
+
+  (D, Dm) = mirror_descriptor_strategy(bin_img_n, config.descriptor_kind)
+
+  desc = SymbolDescriptor(
+    schema="symbol_descriptor.v1",
+    key=symbol_key,
+    build_method="family_doc",
+    build_time_utc=utc_now(),
+    source_fingerprint={
+      "mode": "family_doc",
+      "rasterize_px": config.rasterize_px,
+      "output_px": config.output_px,
+      "descriptor_kind": config.descriptor_kind
+    },
+    descriptor_vector=D,                     # store primary; also store mirrored variant if desired
+    descriptor_kind=config.descriptor_kind,
+    bbox_aspect=aspect_of_foreground(bin_img_n),
+    bbox_area_norm=area_of_foreground(bin_img_n) / (config.output_px^2),
+    pixel_density=foreground_density(bin_img_n),
+    debug_preview_path=maybe_write_preview(bin_img_n, symbol_key, config)
+  )
+
+  # Option: store Dm in cache as "descriptor_vector_mirror"
+  desc.source_fingerprint["descriptor_vector_mirror"] = Dm
+
+  close_document(fam_doc, discard=True)
+  return desc
+
+
+============================================================
+SYMBOL CACHE BUILD - MODE B: ISOLATED RENDER + DESCRIPTOR
+============================================================
+
+function build_symbol_descriptor_isolated_render(project_doc, symbol_key, config) -> SymbolDescriptor | Failure:
+  # Create a temporary drafting view that uses a known template/visibility profile
+  tmp_view = create_temp_drafting_view(project_doc, config.view_template_id)
+  if tmp_view is null:
+    return Failure("temp view create failed")
+
+  # Place one instance of the symbol in the tmp view at origin
+  sym = project_doc.get_element(symbol_key.symbol_id)            # FamilySymbol
+  if sym is null:
+    delete_view(tmp_view)
+    return Failure("symbol missing")
+
+  # Ensure symbol is activated/loaded as required by Revit
+  ensure_symbol_activated(sym)
+
+  inst = place_detail_item_instance(tmp_view, sym, point=(0,0,0))
+  if inst is null:
+    delete_view(tmp_view)
+    return Failure("place instance failed")
+
+  # Isolate the instance to remove any background/view noise
+  isolate_elements_temporarily(tmp_view, [inst.id])
+
+  # Set crop to content bbox around the isolated instance
+  crop_bbox = element_bbox_in_view(inst, tmp_view)
+  if crop_bbox is null:
+    # still can export full view, but normalization gets harder
+    crop_bbox = default_crop_box_around_origin(config.default_crop_size)
+
+  set_view_crop_box(tmp_view, expand_bbox(crop_bbox, config.crop_padding_ratio))
+
+  # Export PNG (graphics-only recommended)
+  png_path = export_view_png(project_doc, tmp_view, config.export_image_settings)
+
+  # Cleanup view (important in production)
+  delete_view(tmp_view)
+
+  if png_path does not exist:
+    return Failure("export png failed")
+
+  # Convert to bin/edge and normalize
+  bin_img = raster_to_binary_or_edges(png_path, config.preprocess)
+  bin_img_n = normalize_image(bin_img, config.output_px, config.pad_px, keep_largest_cc=True)
+
+  # Descriptor + mirror variant
+  (D, Dm) = mirror_descriptor_strategy(bin_img_n, config.descriptor_kind)
+
+  return SymbolDescriptor(
+    schema="symbol_descriptor.v1",
+    key=symbol_key,
+    build_method="isolated_render",
+    build_time_utc=utc_now(),
+    source_fingerprint={
+      "mode": "isolated_render",
+      "view_template_id": config.view_template_id,
+      "export": config.export_image_settings_hash,
+      "crop_padding_ratio": config.crop_padding_ratio,
+      "preprocess": config.preprocess_hash,
+      "output_px": config.output_px,
+      "descriptor_kind": config.descriptor_kind
+    },
+    descriptor_vector=D,
+    descriptor_kind=config.descriptor_kind,
+    bbox_aspect=aspect_of_foreground(bin_img_n),
+    bbox_area_norm=area_of_foreground(bin_img_n) / (config.output_px^2),
+    pixel_density=foreground_density(bin_img_n),
+    debug_preview_path=png_path if config.keep_previews else null
+  ).also_store("descriptor_vector_mirror", Dm)
+
+
+============================================================
+SYMBOL CACHE ORCHESTRATION
+============================================================
+
+function build_symbol_cache(project_doc, symbol_keys, config) -> SymbolCache:
+  cache = SymbolCache(schema="symbol_cache.v1", corpus_id=config.corpus_id, descriptors={}, stats={})
+  failures = []
+
+  for key in symbol_keys:
+    cache_key_str = stable_symbol_key_string(key)
+
+    if cache_key_str in cache.descriptors and not config.force_rebuild:
+      continue
+
+    # Try family-doc extraction first (cheap if it works, explainable)
+    desc = build_symbol_descriptor_family_doc(project_doc, key, config.family_doc)
+    if desc is Failure:
+      # Fallback to isolated render (robust, sees what user sees)
+      desc = build_symbol_descriptor_isolated_render(project_doc, key, config.isolated_render)
+
+    if desc is Failure:
+      failures.append({ "symbol": cache_key_str, "reason": desc.reason })
+      continue
+
+    cache.descriptors[cache_key_str] = desc
+
+  cache.stats = {
+    "symbols_total": len(symbol_keys),
+    "symbols_cached": len(cache.descriptors),
+    "failures": len(failures),
+    "failure_samples": failures[0:20]
+  }
+  write_json(config.cache_path, cache)
+  return cache
+
+
+============================================================
+VIEW RASTER RENDER + NORMALIZATION PIPELINE
+============================================================
+
+function render_view_png_standard(project_doc, view, config) -> str | Failure:
+  # Duplicate view to avoid mutating user view
+  tmp_view = duplicate_view_for_export(view)
+
+  # Apply deterministic visibility + graphics settings via template or overrides
+  apply_view_template(tmp_view, config.view_template_id)
+
+  # Choose crop strategy
+  if config.crop_strategy == "content_bbox":
+    # compute bbox from selected categories only (exclude text/dims if configured)
+    elems = collect_elements_for_crop(tmp_view, include_categories=config.crop_categories)
+    bbox = union_bbox([element_bbox_in_view(e, tmp_view) for e in elems if bbox exists])
+    if bbox is null:
+      bbox = fallback_crop_box(tmp_view)
+    set_view_crop_box(tmp_view, expand_bbox(bbox, config.crop_padding_ratio))
+  elif config.crop_strategy == "view_cropbox":
+    # keep existing crop, but may normalize later
+    ensure_crop_enabled(tmp_view)
+  elif config.crop_strategy == "fixed_frame":
+    set_view_crop_box(tmp_view, fixed_box(config.fixed_frame_size))
+  else:
+    delete_view(tmp_view)
+    return Failure("unknown crop strategy")
+
+  # Export
+  png_path = export_view_png(project_doc, tmp_view, config.export_image_settings)
+
+  delete_view(tmp_view)
+  if png_path missing:
+    return Failure("png export failed")
+
+  return png_path
+
+
+function build_view_raster_signature(project_doc, view, config) -> ViewRasterSignature | Failure:
+  png_path = render_view_png_standard(project_doc, view, config.render)
+  if png_path is Failure:
+    return png_path
+
+  # preprocess: edges or binary
+  bin_img = raster_to_binary_or_edges(png_path, config.preprocess)
+
+  # normalize: crop by foreground bbox, pad, resize, center
+  bin_img_n = normalize_image(bin_img, config.output_px, config.pad_px, keep_largest_cc=config.keep_largest_cc)
+
+  # compute descriptor (optionally mirror-invariant handling as in symbols)
+  (D, Dm) = mirror_descriptor_strategy(bin_img_n, config.descriptor_kind)
+
+  sig = ViewRasterSignature(
+    schema="view_raster_sig.v1",
+    view_id=view.id,
+    view_name=view.name,
+    image_kind=config.preprocess.mode,
+    descriptor_kind=config.descriptor_kind,
+    descriptor_vector=D,                             # store Dm separately for mirror check
+    crop_strategy=config.render.crop_strategy,
+    visibility_profile=config.render.visibility_profile,
+    output_px=config.output_px,
+    preprocess=config.preprocess.to_dict(),
+    build_time_utc=utc_now()
+  )
+  sig.extra["descriptor_vector_mirror"] = Dm
+
+  if config.keep_previews:
+    sig.extra["png_path"] = png_path
+  else:
+    delete_file(png_path)
+
+  return sig
+
+
+============================================================
+COMPARISON USING DESCRIPTORS (SYMBOL OR VIEW)
+============================================================
+
+function descriptor_similarity(descA, descB) -> float:
+  # Mirror-invariant similarity
+  sim1 = cosine(descA.vector, descB.vector)
+  sim2 = cosine(descA.vector, descB.vector_mirror)
+  return max(sim1, sim2)
+
+function compare_views_with_raster_sig(sig_query, sig_candidate) -> float:
+  return descriptor_similarity(sig_query, sig_candidate)
+
+function compare_symbol_multisets(viewA_symbols, viewB_symbols, symbol_cache) -> float:
+  # Each view has a multiset of SymbolKeys with counts
+  # Use an assignment / histogram similarity:
+  # - simplest: weighted overlap of symbol ids
+  # - stronger: compare descriptor clusters (costly)
+  #
+  # Minimal robust approach:
+  # 1) expand to multiset of descriptor vectors
+  # 2) build a bag-of-descriptors signature (e.g. average + second moment)
+  # 3) compare with cosine
+  #
+  # (This avoids expensive bipartite matching)
+
+  vecA = aggregate_descriptors([symbol_cache[k].vector for k in expand(viewA_symbols)])
+  vecB = aggregate_descriptors([symbol_cache[k].vector for k in expand(viewB_symbols)])
+  return cosine(vecA, vecB)
+
+
+============================================================
+NOTES / DESIGN CHOICES
+============================================================
+
+- Prefer isolated_render for Detail Item families if family-doc extraction yields empty geometry.
+- Use standardized view template + category visibility to control text/dim noise:
+  visibility_profile "graphics_only" recommended for matching.
+- Use "content_bbox" crop strategy excluding text/dims to stabilize framing.
+- Use affine normalization + rotation-invariant descriptor; mirror check by evaluating flipped variant.
+- Store descriptors, not just PNGs; keep optional previews for debugging only.
+- Allow incremental cache fill: build symbol descriptor on first encounter if missing.
