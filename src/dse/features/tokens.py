@@ -49,7 +49,7 @@ def resolve_type_name(element, fallback="<unknown-type>"):
     if element is None:
         return fallback
 
-    # FIX: prefer symbol/type name for family instances in Dynamo/Revit hosts.
+    # FamilyInstance: Symbol.Name is most reliable in CPython3/Python.NET hosts.
     symbol = getattr(element, "Symbol", None)
     if symbol is not None:
         try:
@@ -59,18 +59,52 @@ def resolve_type_name(element, fallback="<unknown-type>"):
         except Exception:
             pass
 
+    # TextNote / Dimension: access their dedicated type-element properties directly.
+    # getattr(obj, "TextNoteType") can resolve to the CLR class object instead of the
+    # instance property in Python.NET 3.x when the property name matches the class name;
+    # direct attribute access via a lambda avoids that string-based lookup ambiguity.
+    for direct_probe in (
+        lambda e: e.TextNoteType,
+        lambda e: e.DimensionType,
+    ):
+        try:
+            type_obj = direct_probe(element)
+            if type_obj is not None:
+                type_name = safe_name(type_obj, fallback=fallback)
+                if is_valid_token_value(type_name):
+                    return type_name
+        except Exception:
+            pass
+
+    # Generic fallback: GetTypeId() → Document.GetElement() → .Name
+    # Do not check IntegerValue == -1: in Revit 2024+ ElementId uses Int64, and large
+    # valid IDs overflow Int32 (IntegerValue) to -1, causing false "invalid" detection.
+    # Let GetElement() return None for the real InvalidElementId instead.
     doc = getattr(element, "Document", None)
     if doc is None:
         return fallback
 
     try:
         type_id = element.GetTypeId()
-        invalid = getattr(type_id, "IntegerValue", None) == -1
-        if type_id is not None and not invalid:
+        if type_id is not None:
             type_elem = doc.GetElement(type_id)
-            type_name = safe_name(type_elem, fallback=fallback)
-            if is_valid_token_value(type_name):
-                return type_name
+            if type_elem is not None:
+                type_name = safe_name(type_elem, fallback=fallback)
+                if is_valid_token_value(type_name):
+                    return type_name
+    except Exception:
+        pass
+
+    # BuiltInParameter fallback: reads type name from instance string parameter, bypassing
+    # the Python.NET 3.x issue where .Name on Revit type elements raises an exception.
+    # Lazy import: collect.py is already loaded in the Dynamo context (imported by search.py);
+    # the try/except silently no-ops in unit-test contexts without the Revit API.
+    try:
+        from dse.revit_api.collect import element_type_name_from_params  # noqa: PLC0415
+
+        val = element_type_name_from_params(element)
+        if val and is_valid_token_value(val):
+            return val
     except Exception:
         pass
 
