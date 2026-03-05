@@ -23,6 +23,9 @@ def _float_close(a, b, eps=EPS):
 
 def _compare_results(old, new):
     deltas = []
+    if isinstance(new, dict) and "results" in new:
+        new = new.get("results")
+
     if not isinstance(old, list) or not isinstance(new, list):
         if old != new:
             deltas.append("Output type/value mismatch")
