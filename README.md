@@ -131,3 +131,42 @@ This project complements other model analysis pipelines such as:
 ## License
 
 TBD
+
+## Dynamo Similarity Package Structure
+
+The former monolithic `src/dynamo_view_similarity.py` script is now split into a modular package under `src/dse/`:
+
+- `src/dse/revit_api/collect.py` — view coercion, element collection, category/group logic.
+- `src/dse/revit_api/geometry_2d.py` — 2D curve extraction, projection, endpoint dedupe, per-element geometry stats.
+- `src/dse/features/tokens.py` — token generation/filters and element type-name resolution.
+- `src/dse/features/idf.py` — DF/IDF construction and serialization helper.
+- `src/dse/features/geom_fingerprint.py` — kNN geometry fingerprint math.
+- `src/dse/features/fine_metrics.py` — fine metrics (point count, bbox aspect, linework density).
+- `src/dse/ranking/similarity.py` — token/geom/fine similarity scoring and explanations.
+- `src/dse/pipelines/search.py` — end-to-end feature extraction and ranking pipeline.
+- `src/dse/cache/symbol_cache.py` — future symbol cache interface stub.
+
+Entrypoint remains `src/dynamo_view_similarity.py` and keeps the same Dynamo `IN`/`OUT` behavior.
+
+### Running
+
+In Dynamo CPython3, run `src/dynamo_view_similarity.py` exactly as before with:
+- `IN[0]`: query view
+- `IN[1]`: corpus views
+- `IN[2]`: top-N (optional)
+- `IN[3]`: sample-N (optional)
+- `IN[4]`: sample seed (optional)
+
+For golden verification in a Revit/Dynamo host, use `tests/harness/golden_compare.py`.
+
+### Dynamo thin runner
+
+If your Dynamo graph should call a stable script from your Documents checkout, use `src/dynamo_thin_runner.py`.
+
+The thin runner:
+- resolves `%USERPROFILE%\Documents\revit_detail_intelligence` (with env-var expansion),
+- loads `src/dynamo_view_similarity.py` from that checkout,
+- forwards the same `IN` array to the loaded script,
+- includes development module clearing (`RELOAD_MODULES = True`) so `dse` modules are re-imported fresh each run.
+
+This lets Dynamo graphs remain minimal while the implementation stays in the repo checkout.
