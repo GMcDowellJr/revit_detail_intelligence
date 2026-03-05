@@ -16,6 +16,7 @@ if RELOAD_MODULES:
         del sys.modules[mod]
 
 from dse.pipelines.search import find_similar_views, sample_view_fingerprints
+from dse.output_format import to_dynamo_score_list
 from dse.revit_api.collect import coerce_view, coerce_views, current_doc
 
 
@@ -36,4 +37,5 @@ elif query_view is None:
         "error": "IN[0] must resolve to a Revit DB.View (View, wrapped View, ElementId, int, or single-item list)."
     }
 else:
-    OUT = find_similar_views(query_view, corpus_views, top_n)
+    results = find_similar_views(query_view, corpus_views, top_n)
+    OUT = to_dynamo_score_list(results, include_header=True)

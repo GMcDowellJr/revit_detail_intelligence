@@ -23,6 +23,33 @@ def _float_close(a, b, eps=EPS):
 
 def _compare_results(old, new):
     deltas = []
+    if isinstance(new, list) and new and isinstance(new[0], list):
+        header = new[0]
+        body = new[1:]
+        idx = {name: i for i, name in enumerate(header)}
+        expected = [
+            "score_geom",
+            "candidate_view_id",
+            "score_tokens",
+            "score_fine",
+            "confidence_tier",
+            "score_total",
+        ]
+        if all(name in idx for name in expected):
+            new = [
+                {
+                    "score_geom": row[idx["score_geom"]],
+                    "candidate_view_id": row[idx["candidate_view_id"]],
+                    "score_tokens": row[idx["score_tokens"]],
+                    "score_fine": row[idx["score_fine"]],
+                    "confidence_tier": row[idx["confidence_tier"]],
+                    "score_total": row[idx["score_total"]],
+                }
+                for row in body
+            ]
+    if isinstance(new, dict) and "results" in new:
+        new = new.get("results")
+
     if not isinstance(old, list) or not isinstance(new, list):
         if old != new:
             deltas.append("Output type/value mismatch")
@@ -33,7 +60,9 @@ def _compare_results(old, new):
     if old_ids != new_ids:
         deltas.append("Top-N ordering differs")
 
-    for idx, (o, n) in enumerate(zip(old, new, strict=False)):
+    for idx in range(min(len(old), len(new))):
+        o = old[idx]
+        n = new[idx]
         for key in ("score_tokens", "score_geom", "score_fine", "score_total"):
             if not _float_close(o.get(key, 0.0), n.get(key, 0.0)):
                 deltas.append(
