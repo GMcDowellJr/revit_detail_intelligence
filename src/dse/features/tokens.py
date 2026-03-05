@@ -77,18 +77,21 @@ def resolve_type_name(element, fallback="<unknown-type>"):
             pass
 
     # Generic fallback: GetTypeId() → Document.GetElement() → .Name
+    # Do not check IntegerValue == -1: in Revit 2024+ ElementId uses Int64, and large
+    # valid IDs overflow Int32 (IntegerValue) to -1, causing false "invalid" detection.
+    # Let GetElement() return None for the real InvalidElementId instead.
     doc = getattr(element, "Document", None)
     if doc is None:
         return fallback
 
     try:
         type_id = element.GetTypeId()
-        invalid = getattr(type_id, "IntegerValue", None) == -1
-        if type_id is not None and not invalid:
+        if type_id is not None:
             type_elem = doc.GetElement(type_id)
-            type_name = safe_name(type_elem, fallback=fallback)
-            if is_valid_token_value(type_name):
-                return type_name
+            if type_elem is not None:
+                type_name = safe_name(type_elem, fallback=fallback)
+                if is_valid_token_value(type_name):
+                    return type_name
     except Exception:
         pass
 
