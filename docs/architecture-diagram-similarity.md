@@ -1,44 +1,43 @@
-%% Detail Search Engine - end-to-end architecture (drafting views)
-%% Notes:
-%% - "Symbol Cache" exists to bypass GetGeometry blind spots for Detail Item families.
-%% - Rendered PNG is optional but becomes the tie-breaker when geometry coverage is low.
-%% - Pipeline supports incremental cache fill: only build symbol signatures when missing.
-
+```mermaid
 flowchart TD
 
-  A[Corpus: Drafting Views] --> B[Scan Views: collect elements]
-  B --> C[Tokenize View: IDF-ready tokens]
-  B --> D[Collect Symbol Types Used: Family|Type keys]
-  B --> E[Extract View-owned Geometry: detail lines, filled region boundaries]
-  B --> F[Layout Features: bbox centers, bbox size/aspect]
+A[Corpus Drafting Views] --> B[Scan Views Collect Elements]
 
-  D --> G{Symbol Cache hit?}
-  G -->|Yes| H[Load Symbol Descriptor]
-  G -->|No| I[Build Symbol Descriptor]
+B --> C[Tokenize View IDF Ready Tokens]
+B --> D[Collect Symbol Types Family Type Keys]
+B --> E[Extract Geometry Detail Lines Filled Regions]
+B --> F[Layout Features Bounding Boxes Centers Aspect]
 
-  I --> J[Temp Drafting View Builder]
-  J --> K[Place 1 instance per Symbol Type]
-  K --> L[Isolate Instance]
-  L --> M[Render PNG: graphics-only channel]
-  M --> N[Normalize: crop, center, fixed size]
-  N --> O[Descriptor: affine normalize + rotation invariance]
-  O --> P[Store in Symbol Cache]
-  P --> H
+D --> G{Symbol Cache Hit}
 
-  C --> Q[Candidate Retrieval]
-  H --> Q
-  E --> Q
-  F --> Q
+G -->|Yes| H[Load Symbol Descriptor]
 
-  Q --> R[Top-N Candidates]
-  R --> S{Need Visual Re-rank?}
-  S -->|No| T[Return Ranked Results + Explanations]
-  S -->|Yes| U[Render View PNGs: standardized crop/visibility]
-  U --> V[Raster Similarity: edge-map/descriptor]
-  V --> W[Re-rank Top-N]
-  W --> T
+G -->|No| I[Build Symbol Descriptor]
 
-  T --> X[Explainability Pack]
-  X --> X1[Shared rare tokens + counts]
-  X --> X2[Symbol overlap + key symbol matches]
-  X --> X3[Geometry coverage + layout deltas]
+I --> J[Create Temporary Drafting View]
+J --> K[Place Symbol Instance]
+K --> L[Isolate Element]
+L --> M[Render PNG]
+M --> N[Normalize Crop Center Fixed Size]
+N --> O[Compute Descriptor Affine Normalized Shape]
+O --> P[Store Descriptor In Symbol Cache]
+P --> H
+
+C --> Q[Candidate Retrieval]
+H --> Q
+E --> Q
+F --> Q
+
+Q --> R[Top N Candidate Views]
+
+R --> S{Visual Re Ranking Needed}
+
+S -->|No| T[Return Ranked Results]
+
+S -->|Yes| U[Render Candidate View PNGs]
+U --> V[Compute Raster Similarity]
+V --> W[Re Rank Candidates]
+W --> T
+
+T --> X[Explain Results]
+```
