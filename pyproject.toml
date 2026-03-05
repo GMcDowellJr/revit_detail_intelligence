@@ -9,6 +9,9 @@ ignore = []
 
 [tool.ruff.lint.per-file-ignores]
 "src/dynamo_view_similarity.py" = ["E402", "E501", "F821", "B905"]
+"src/dynamo_thin_runner.py" = ["F821"]
+"tests/harness/dynamo_view_similarity_legacy.py" = ["E402", "E501", "F821", "B905"]
+"tests/harness/golden_compare.py" = ["F401"]
 
 [tool.pytest.ini_options]
 addopts = "-q"
