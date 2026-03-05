@@ -164,9 +164,10 @@ For golden verification in a Revit/Dynamo host, use `tests/harness/golden_compar
 If your Dynamo graph should call a stable script from your Documents checkout, use `src/dynamo_thin_runner.py`.
 
 The thin runner:
-- resolves `C:\Users\%USERPROFILE%\Documents\revit_detail_intelligence` (with env-var expansion),
+- resolves `%USERPROFILE%\Documents\revit_detail_intelligence` (with env-var expansion),
 - loads `src/dynamo_view_similarity.py` from that checkout,
+- temporarily adds the checkout import paths (repo root + `src/`) so `dse` imports resolve,
 - forwards the same `IN` array to the loaded script,
-- returns the loaded script `OUT` unchanged.
+- includes development module clearing (`RELOAD_MODULES = True`) so `dse` modules are re-imported fresh each run.
 
 This lets Dynamo graphs remain minimal while the implementation stays in the repo checkout.

@@ -3,6 +3,18 @@ Dynamo (CPython3) script for Revit 2025.
 Feature-based similarity matching for detail / drafting views.
 """
 
+import sys
+
+# Module reloading for development (ensures latest code is used)
+RELOAD_MODULES = True
+
+if RELOAD_MODULES:
+    modules_to_remove = [
+        key for key in list(sys.modules.keys()) if key == "dse" or key.startswith("dse.")
+    ]
+    for mod in modules_to_remove:
+        del sys.modules[mod]
+
 from dse.pipelines.search import find_similar_views, sample_view_fingerprints
 from dse.revit_api.collect import coerce_view, coerce_views, current_doc
 
