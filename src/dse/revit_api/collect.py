@@ -1,5 +1,3 @@
-from collections import defaultdict
-
 import clr
 
 clr.AddReference("RevitAPI")
@@ -153,7 +151,9 @@ def classify_view_kind(view):
     if view.ViewType == ViewType.DraftingView:
         return "DRAFTING"
     if view.ViewType in (ViewType.Detail, ViewType.Section, ViewType.Elevation):
-        has_model = any(category_type_label(e.Category) != "Annotation" for e in get_view_elements(view))
+        has_model = any(
+            category_type_label(e.Category) != "Annotation" for e in get_view_elements(view)
+        )
         return "DETAIL_MODEL" if has_model else "DETAIL_DRAFTING"
     return "DETAIL_DRAFTING"
 

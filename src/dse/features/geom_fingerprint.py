@@ -22,7 +22,12 @@ def robust_scale(points2d, k):
     dists = []
     for i in range(len(points2d)):
         for j in k_nearest_neighbors(points2d, i, k):
-            dists.append(math.hypot(points2d[j][0] - points2d[i][0], points2d[j][1] - points2d[i][1]))
+            dists.append(
+                math.hypot(
+                    points2d[j][0] - points2d[i][0],
+                    points2d[j][1] - points2d[i][1],
+                )
+            )
     if not dists:
         return max(EPS, bbox_diagonal(points2d))
     dists.sort()

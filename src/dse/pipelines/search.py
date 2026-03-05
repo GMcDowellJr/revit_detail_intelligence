@@ -80,7 +80,9 @@ def collect_token_data_for_view(view, kind, tokens=None, include_element_report=
         if include_element_report:
             geom_summary = geometry_summary_for_element(element, view=view)
             if geom_summary.get("curve_count", 0) == 0:
-                geom_summary["note"] = "No extractable curves from element geometry in current view/context"
+                geom_summary["note"] = (
+                    "No extractable curves from element geometry in current view/context"
+                )
             row = element_base_info(element)
             row.update(
                 {
@@ -153,7 +155,9 @@ def collect_token_data_for_view(view, kind, tokens=None, include_element_report=
                 group = "annotation_lines"
 
             if not added_tokens:
-                info["reason"] = "token filtered by stopword policy or element is not mapped to a token strategy"
+                info["reason"] = (
+                    "token filtered by stopword policy or element is not mapped to a token strategy"
+                )
                 info["category_name"] = category_name(elem)
 
             record_row(elem, group, info, added_tokens, collected=True)
@@ -194,7 +198,9 @@ def extract_features(view):
 
 def find_similar_views(query_view, corpus_views, top_n=5):
     query_features = extract_features(query_view)
-    corpus_feat = [extract_features(v) for v in corpus_views if is_view(v) and v.Id != query_view.Id]
+    corpus_feat = [
+        extract_features(v) for v in corpus_views if is_view(v) and v.Id != query_view.Id
+    ]
 
     token_df, doc_count = build_token_df_from_features(corpus_feat)
     token_idf = build_token_idf(token_df, doc_count)

@@ -24,7 +24,7 @@ def token_similarity(tokens_a, tokens_b, token_idf=None, default_idf=1.0):
 def cosine_similarity(a, b):
     if not a or not b or len(a) != len(b):
         return 0.0
-    dot = sum(x * y for x, y in zip(a, b))
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
     na = math.sqrt(sum(x * x for x in a))
     nb = math.sqrt(sum(y * y for y in b))
     if na <= EPS or nb <= EPS:
@@ -70,7 +70,9 @@ def top_shared_bins(fp_a, fp_b, top=10):
 
 def explain_match(query_features, candidate_features):
     common = set(query_features.tokens.keys()) & set(candidate_features.tokens.keys())
-    token_contrib = [(k, min(query_features.tokens[k], candidate_features.tokens[k])) for k in common]
+    token_contrib = [
+        (k, min(query_features.tokens[k], candidate_features.tokens[k])) for k in common
+    ]
     token_contrib.sort(key=lambda x: (-x[1], x[0]))
     return {
         "top_shared_tokens": token_contrib[:10],

@@ -33,10 +33,12 @@ def _compare_results(old, new):
     if old_ids != new_ids:
         deltas.append("Top-N ordering differs")
 
-    for idx, (o, n) in enumerate(zip(old, new)):
+    for idx, (o, n) in enumerate(zip(old, new, strict=False)):
         for key in ("score_tokens", "score_geom", "score_fine", "score_total"):
             if not _float_close(o.get(key, 0.0), n.get(key, 0.0)):
-                deltas.append("Row {} {} differs: {} vs {}".format(idx, key, o.get(key), n.get(key)))
+                deltas.append(
+                    "Row {} {} differs: {} vs {}".format(idx, key, o.get(key), n.get(key))
+                )
     return deltas
 
 
@@ -56,5 +58,8 @@ def run_golden_compare(query_view, corpus_views, top_n=5, sample_n=None, sample_
             "scores": ["score_tokens", "score_geom", "score_fine", "score_total"],
             "structure": "list/dict text-compatible structure",
         },
-        "note": "Only FamilyInstance type-name resolution is expected to differ where old output had <none>/<unknown-type>.",
+        "note": (
+            "Only FamilyInstance type-name resolution is expected to differ "
+            "where old output had <none>/<unknown-type>."
+        ),
     }

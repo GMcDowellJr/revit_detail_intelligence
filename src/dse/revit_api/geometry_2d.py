@@ -3,10 +3,18 @@ import math
 import clr
 
 clr.AddReference("RevitAPI")
-from Autodesk.Revit.DB import CurveElement, DetailCurve, DetailLine, FamilyInstance, FilledRegion, GeometryInstance, Options  # noqa: E402
+from Autodesk.Revit.DB import (  # noqa: E402
+    CurveElement,
+    DetailCurve,
+    DetailLine,
+    FamilyInstance,
+    FilledRegion,
+    GeometryInstance,
+    Options,
+)
 
-from dse.config import CONFIG, EPS
-from dse.revit_api.collect import get_view_elements
+from dse.config import CONFIG, EPS  # noqa: E402
+from dse.revit_api.collect import get_view_elements  # noqa: E402
 
 
 def collect_curves_from_geometry(geom_obj, out_curves):

@@ -54,4 +54,5 @@ if _entrypoint is None:
         "checked": _candidate_entrypoints(_repo_root),
     }
 else:
-    OUT = _run_loaded_script(_entrypoint, IN)
+    in_values = globals().get("IN", [])
+    OUT = _run_loaded_script(_entrypoint, in_values)
