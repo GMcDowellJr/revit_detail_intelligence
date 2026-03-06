@@ -18,7 +18,20 @@ CONFIG = {
         "dim_style": 1.2,
         "text_type": 0.8,
     },
-    "pipeline_version": "dse.pipeline.v0.2.1",
+    "pipeline_version": "dse.pipeline.v0.3.2",
+    "cache_root": r"C:\temp\revit_detail_intelligence\cache",
+    "output_root": r"C:\temp\revit_detail_intelligence\output",
+    "contacts_dir": r"C:\temp\revit_detail_intelligence\output\contacts",
+    "many_to_many_output_dir": r"C:\temp\revit_detail_intelligence\output\many_to_many",
+    "preview_root": r"C:\temp\revit_detail_intelligence\cache\previews",
+    "preview_longest_side": 2400,
+    "contact_sheet": {
+        "enabled": False,
+        "top_n_candidates": 9,
+        "tile_width": 480,
+        "tile_height": 320,
+        "columns": 3,
+    },
     "stage2_rerank": {
         "enabled": True,
         "pool_top_k": 50,
@@ -32,6 +45,13 @@ CONFIG = {
         "margin_high": 0.15,
         "margin_med": 0.07,
         "raster_support_threshold": 0.90,
+    },
+    "many_to_many": {
+        "enabled": True,
+        "top_k": 5,
+        "skip_self": True,
+        "symmetric_dedupe": False,
+        "write_output": True,
     },
 }
 EPS = 1e-9
