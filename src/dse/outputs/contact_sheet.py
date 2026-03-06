@@ -282,9 +282,20 @@ def write_contact_sheet_png(seed_tile, candidate_tiles, config, run_id=None):
         py = y + 10
         pcol = (165, 205, 175) if idx == 0 else (230, 230, 230)
         _fill_rect(canvas, width, height, px, py, preview_w, preview_h, pcol)
-        drew = _draw_preview_image(canvas, width, height, px, py, preview_w, preview_h, tile.get("preview_path"))
+        drew = _draw_preview_image(
+            canvas, width, height, px, py, preview_w, preview_h, tile.get("preview_path")
+        )
         if not drew:
-            _draw_text(canvas, width, height, px + 20, py + (preview_h // 2) - 8, "PREVIEW", (20, 20, 20), scale=3)
+            _draw_text(
+                canvas,
+                width,
+                height,
+                px + 20,
+                py + (preview_h // 2) - 8,
+                "PREVIEW",
+                (20, 20, 20),
+                scale=3,
+            )
 
         lines = _tile_lines(tile, rank=idx if idx > 0 else None)
         line_y = y + preview_h + 20

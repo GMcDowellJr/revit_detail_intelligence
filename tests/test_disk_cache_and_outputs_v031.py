@@ -2,7 +2,6 @@ import os
 
 from dse.cache.view_feature_cache import (
     ViewFeatureCache,
-    ViewFeatureCacheEntry,
     get_cached_bundle_with_diagnostics,
     put_bundle_in_caches,
 )

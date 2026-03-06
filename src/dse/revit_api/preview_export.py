@@ -1,4 +1,5 @@
 import os
+import re
 import struct
 
 from dse.io_paths import ensure_dir
@@ -34,11 +35,11 @@ def _has_required_resolution(path, required_longest_side):
 
 
 def _find_exported_preview_file(preview_root, view_id):
-    prefix = "view_{}".format(int(view_id))
+    pattern = re.compile(r"^view_{}(?:\..*)?\.png$".format(int(view_id)))
     candidates = []
     try:
         for name in os.listdir(preview_root):
-            if name.lower().endswith(".png") and name.startswith(prefix):
+            if name.lower().endswith(".png") and pattern.match(name):
                 path = os.path.join(preview_root, name)
                 if os.path.exists(path):
                     candidates.append(path)

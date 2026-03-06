@@ -43,9 +43,33 @@ def test_cache_requires_state_hash_pipeline_and_schema_match():
         )
     )
 
-    assert cache.get_if_current(10, "abc", pipeline_version="p1", schema_version="view_search_features.v0.3") is bundle
-    assert cache.get_if_current(10, "different", pipeline_version="p1", schema_version="view_search_features.v0.3") is None
-    assert cache.get_if_current(10, "abc", pipeline_version="p2", schema_version="view_search_features.v0.3") is None
+    assert (
+        cache.get_if_current(
+            10,
+            "abc",
+            pipeline_version="p1",
+            schema_version="view_search_features.v0.3",
+        )
+        is bundle
+    )
+    assert (
+        cache.get_if_current(
+            10,
+            "different",
+            pipeline_version="p1",
+            schema_version="view_search_features.v0.3",
+        )
+        is None
+    )
+    assert (
+        cache.get_if_current(
+            10,
+            "abc",
+            pipeline_version="p2",
+            schema_version="view_search_features.v0.3",
+        )
+        is None
+    )
     assert cache.get_if_current(10, "abc", pipeline_version="p1", schema_version="other") is None
 
 

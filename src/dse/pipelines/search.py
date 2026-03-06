@@ -20,6 +20,7 @@ from dse.features.tokens import (
     new_token_store,
     safe_name,
     safe_type_name,
+    token_weight,
     type_signature,
 )
 from dse.models import (
@@ -74,14 +75,20 @@ def _stable_json_hash(payload):
     return hashlib.sha1(txt.encode("utf-8")).hexdigest()
 
 
+def _string_or_none(value):
+    txt = "" if value is None else str(value).strip()
+    return txt or None
+
+
 def _doc_provenance(view):
     doc = getattr(view, "Document", None)
     if doc is None:
         return None, None
     doc_id = getattr(getattr(doc, "Application", None), "VersionBuild", None)
     if doc_id is None:
-        doc_id = collect_safe_name(getattr(doc, "PathName", None), fallback="")
-    return str(doc_id or "") or None, collect_safe_name(getattr(doc, "Title", None), fallback="") or None
+        doc_id = getattr(doc, "PathName", None)
+    doc_name = getattr(doc, "Title", None)
+    return _string_or_none(doc_id), _string_or_none(doc_name)
 
 
 def _view_settings_signature(view):
@@ -108,11 +115,15 @@ def _split_tokens(token_map):
     symbols = {}
     for token, weight in token_map.items():
         prefix, _, value = token.partition(":")
-        counts_by_kind[prefix] = counts_by_kind.get(prefix, 0) + 1
         target = stable if prefix in stable_prefixes else context
         target[token] = float(weight)
+
+        kind_weight = max(1e-9, float(token_weight(prefix)))
+        count_est = max(1, int(round(float(weight) / kind_weight)))
+        counts_by_kind[prefix] = counts_by_kind.get(prefix, 0) + count_est
+
         if prefix in ("detail_component", "type_sig"):
-            symbols[value] = symbols.get(value, 0) + 1
+            symbols[value] = symbols.get(value, 0) + count_est
     return stable, context, counts_by_kind, symbols
 
 
@@ -184,6 +195,77 @@ def _layout_graph_features(view, elements):
         "edge_density_est": edge_density,
         "component_count_est": component_count_est,
         "center_graph_hash": struct_hash,
+    }
+
+
+def _build_state_context(view):
+    kind = classify_view_kind(view)
+    source_doc_id, source_doc_name = _doc_provenance(view)
+    raw_tokens, _, _ = collect_token_data_for_view(view, kind, include_element_report=False)
+
+    curves = get_2d_curves_in_view(view, only_model_intersections=(kind == "DETAIL_MODEL"))
+    pts = endpoints_from_curves(curves)
+    pts = dedupe_points_by_grid(pts, CONFIG["tol_coord"])
+    pts2 = to_view_local_2d(pts, view)
+
+    scale = robust_scale(pts2, CONFIG["kNN_k"])
+    ptsn = [(p[0] / scale, p[1] / scale) for p in pts2] if pts2 else []
+
+    tokens_stable, tokens_context, counts_by_kind, symbol_multiset = _split_tokens(raw_tokens)
+    token_signature = _stable_json_hash(
+        {
+            "tokens_stable": sorted((k, round(v, 6)) for k, v in tokens_stable.items()),
+            "tokens_context": sorted((k, round(v, 6)) for k, v in tokens_context.items()),
+            "token_counts_by_kind": dict(sorted(counts_by_kind.items())),
+        }
+    )
+
+    all_elements = get_view_elements(view)
+    layout = _layout_graph_features(view, all_elements)
+    content_bbox_q = [
+        round(min((p[0] for p in ptsn), default=0.0), 3),
+        round(min((p[1] for p in ptsn), default=0.0), 3),
+        round(max((p[0] for p in ptsn), default=0.0), 3),
+        round(max((p[1] for p in ptsn), default=0.0), 3),
+    ]
+    center_graph_hash = layout.get("center_graph_hash", "")
+
+    source_scope = source_doc_id or source_doc_name or "<no-doc>"
+    state_payload = {
+        "view_id": view.Id.IntegerValue,
+        "view_kind": kind,
+        "source_scope": source_scope,
+        "content_bbox_q": content_bbox_q,
+        "element_count": len(all_elements),
+        "type_count": len(symbol_multiset),
+        "curve_count_est": len(curves),
+        "symbol_instance_count": int(sum(symbol_multiset.values())),
+        "center_graph_hash": center_graph_hash,
+        "token_signature": token_signature,
+        "view_settings_sig": _view_settings_signature(view),
+        "pipeline_version": CONFIG["pipeline_version"],
+        "search_schema_version": SEARCH_SCHEMA_VERSION,
+    }
+    state_hash = _stable_json_hash(state_payload)
+
+    return {
+        "kind": kind,
+        "source_doc_id": source_doc_id,
+        "source_doc_name": source_doc_name,
+        "raw_tokens": raw_tokens,
+        "curves": curves,
+        "ptsn": ptsn,
+        "scale": scale,
+        "all_elements": all_elements,
+        "layout": layout,
+        "tokens_stable": tokens_stable,
+        "tokens_context": tokens_context,
+        "counts_by_kind": counts_by_kind,
+        "symbol_multiset": symbol_multiset,
+        "content_bbox_q": content_bbox_q,
+        "center_graph_hash": center_graph_hash,
+        "state_payload": state_payload,
+        "state_hash": state_hash,
     }
 
 
@@ -316,18 +398,22 @@ def collect_token_data_for_view(view, kind, tokens=None, include_element_report=
     return dict(token_store), element_report, summary
 
 
-def extract_feature_bundle(view):
-    kind = classify_view_kind(view)
-    source_doc_id, source_doc_name = _doc_provenance(view)
-    raw_tokens, _, _ = collect_token_data_for_view(view, kind, include_element_report=False)
+def extract_feature_bundle(view, state_ctx=None):
+    ctx = state_ctx or _build_state_context(view)
 
-    curves = get_2d_curves_in_view(view, only_model_intersections=(kind == "DETAIL_MODEL"))
-    pts = endpoints_from_curves(curves)
-    pts = dedupe_points_by_grid(pts, CONFIG["tol_coord"])
-    pts2 = to_view_local_2d(pts, view)
-
-    scale = robust_scale(pts2, CONFIG["kNN_k"])
-    ptsn = [(p[0] / scale, p[1] / scale) for p in pts2] if pts2 else []
+    kind = ctx["kind"]
+    source_doc_id = ctx["source_doc_id"]
+    source_doc_name = ctx["source_doc_name"]
+    curves = ctx["curves"]
+    ptsn = ctx["ptsn"]
+    scale = ctx["scale"]
+    layout = dict(ctx["layout"])
+    tokens_stable = ctx["tokens_stable"]
+    tokens_context = ctx["tokens_context"]
+    counts_by_kind = ctx["counts_by_kind"]
+    symbol_multiset = ctx["symbol_multiset"]
+    content_bbox_q = ctx["content_bbox_q"]
+    center_graph_hash = ctx["center_graph_hash"]
 
     geom_fp = geom_fingerprint_knn(
         ptsn,
@@ -336,10 +422,6 @@ def extract_feature_bundle(view):
         ang_bins=CONFIG["ang_bins_deg"],
     )
 
-    tokens_stable, tokens_context, counts_by_kind, symbol_multiset = _split_tokens(raw_tokens)
-
-    all_elements = get_view_elements(view)
-    layout = _layout_graph_features(view, all_elements)
     orientation_hist = _orientation_hist(curves)
     length_hist = _normalized_length_hist(curves, scale)
 
@@ -360,28 +442,8 @@ def extract_feature_bundle(view):
         }
     )
 
-    content_bbox_q = [
-        round(min((p[0] for p in ptsn), default=0.0), 3),
-        round(min((p[1] for p in ptsn), default=0.0), 3),
-        round(max((p[0] for p in ptsn), default=0.0), 3),
-        round(max((p[1] for p in ptsn), default=0.0), 3),
-    ]
-    center_graph_hash = layout.pop("center_graph_hash", "")
-
-    state_payload = {
-        "view_id": view.Id.IntegerValue,
-        "view_kind": kind,
-        "content_bbox_q": content_bbox_q,
-        "element_count": len(all_elements),
-        "type_count": len(symbol_multiset),
-        "curve_count_est": len(curves),
-        "symbol_instance_count": int(sum(symbol_multiset.values())),
-        "center_graph_hash": center_graph_hash,
-        "view_settings_sig": _view_settings_signature(view),
-        "pipeline_version": CONFIG["pipeline_version"],
-        "search_schema_version": SEARCH_SCHEMA_VERSION,
-    }
-    state_hash = _stable_json_hash(state_payload)
+    state_payload = dict(ctx["state_payload"])
+    state_hash = ctx["state_hash"]
 
     state_signature = ViewStateSignature(
         view_id=view.Id.IntegerValue,
@@ -389,14 +451,18 @@ def extract_feature_bundle(view):
         source_doc_id=source_doc_id,
         source_doc_name=source_doc_name,
         content_bbox_q=content_bbox_q,
-        element_count=len(all_elements),
+        element_count=len(ctx["all_elements"]),
         type_count=len(symbol_multiset),
         curve_count_est=len(curves),
         symbol_instance_count=int(sum(symbol_multiset.values())),
         center_graph_hash=center_graph_hash,
         view_settings_sig=state_payload["view_settings_sig"],
         state_hash=state_hash,
-        debug={"pt_count": len(ptsn), "curve_count": len(curves)},
+        debug={
+            "pt_count": len(ptsn),
+            "curve_count": len(curves),
+            "token_signature": state_payload["token_signature"],
+        },
     )
 
     search_features = ViewSearchFeatures(
@@ -410,7 +476,7 @@ def extract_feature_bundle(view):
         geom_hist_knn_endpoints=geom_fp,
         geom_orientation_hist=orientation_hist,
         geom_length_hist=length_hist,
-        layout_graph_features=layout,
+        layout_graph_features={k: v for k, v in layout.items() if k != "center_graph_hash"},
         fine_metrics=fine,
         symbol_multiset=symbol_multiset,
         symbol_counts={"total": int(sum(symbol_multiset.values())), "unique": len(symbol_multiset)},
@@ -453,13 +519,13 @@ def extract_features(view):
 
 
 def _extract_bundle_with_cache(view):
-    fresh_bundle = extract_feature_bundle(view)
+    state_ctx = _build_state_context(view)
     cache_root = resolve_view_cache_root(CONFIG)
     cached, status = get_cached_bundle_with_diagnostics(
         in_memory_cache=GLOBAL_VIEW_FEATURE_CACHE,
         cache_root=cache_root,
-        view_id=fresh_bundle.state_signature.view_id,
-        state_hash=fresh_bundle.state_signature.state_hash,
+        view_id=view.Id.IntegerValue,
+        state_hash=state_ctx["state_hash"],
         pipeline_version=CONFIG["pipeline_version"],
         schema_version=SEARCH_SCHEMA_VERSION,
     )
@@ -467,6 +533,7 @@ def _extract_bundle_with_cache(view):
         cached.presentation_summary.debug["cache_status"] = status
         return cached
 
+    fresh_bundle = extract_feature_bundle(view, state_ctx=state_ctx)
     put_bundle_in_caches(
         in_memory_cache=GLOBAL_VIEW_FEATURE_CACHE,
         cache_root=cache_root,
@@ -585,7 +652,9 @@ def find_similar_views_many_to_many(
 ):
     top_k = int(top_n if top_n is not None else CONFIG.get("many_to_many", {}).get("top_k", 5))
     skip_self_mode = (
-        bool(skip_self) if skip_self is not None else bool(CONFIG.get("many_to_many", {}).get("skip_self", True))
+        bool(skip_self)
+        if skip_self is not None
+        else bool(CONFIG.get("many_to_many", {}).get("skip_self", True))
     )
     dedupe_mode = (
         bool(symmetric_dedupe)
@@ -619,9 +688,11 @@ def find_similar_views_many_to_many(
             }
         )
 
-    known = {r["view_id"] for r in rows}
+    known = {(r.get("source_doc_id") or r.get("source_doc_name") or "", r["view_id"]) for r in rows}
     for view in cviews:
-        if view.Id.IntegerValue in known:
+        v_doc_id, v_doc_name = _doc_provenance(view)
+        vkey = (v_doc_id or v_doc_name or "", view.Id.IntegerValue)
+        if vkey in known:
             continue
         bundle = _extract_bundle_with_cache(view)
         legacy = legacy_view_features_from_search(bundle.search_features)
