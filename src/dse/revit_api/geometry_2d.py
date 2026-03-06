@@ -178,3 +178,19 @@ def geometry_summary_for_element(element, view=None):
         "unique_endpoint_count": len(dedupe_points_by_grid(pts, CONFIG["tol_coord"])) if pts else 0,
         "curve_total_length": sum(getattr(c, "Length", 0.0) for c in curves),
     }
+
+
+def element_layout_signature(element, view=None):
+    curves = element_geometry_curves(element, view=view)
+    pts = endpoints_from_curves(curves)
+    if not pts:
+        return None
+    pts2 = to_view_local_2d(pts, view) if view is not None else [(p.X, p.Y) for p in pts]
+    x0, y0, x1, y1 = bbox(pts2)
+    w = max(x1 - x0, EPS)
+    h = max(y1 - y0, EPS)
+    return {
+        "center": ((x0 + x1) * 0.5, (y0 + y1) * 0.5),
+        "size": (w, h),
+        "area": w * h,
+    }
