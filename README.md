@@ -85,6 +85,7 @@ docs/
 - similarity-matching.md
 - detail-indexing.md
 - calibration-and-validation.md
+- runtime-storage-and-roadmap.md
 
 research/
 - experiments and exploratory notes
@@ -171,3 +172,12 @@ The thin runner:
 - includes development module clearing (`RELOAD_MODULES = True`) so `dse` modules are re-imported fresh each run.
 
 This lets Dynamo graphs remain minimal while the implementation stays in the repo checkout.
+
+
+## Runtime FAQ (v0.3)
+
+For practical answers to:
+- where caches are stored,
+- how many-to-many is enabled, and
+- where contact sheets are stored,
+see `docs/runtime-storage-and-roadmap.md`.

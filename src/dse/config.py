@@ -33,6 +33,10 @@ CONFIG = {
         "margin_med": 0.07,
         "raster_support_threshold": 0.90,
     },
+    "many_to_many": {
+        "enabled": False,
+        "notes": "Reserved for future corpus orchestration; not implemented in v0.3",
+    },
 }
 EPS = 1e-9
 TOKEN_STOPWORDS = {"<none>", "<no-type>", "<unknown-type>", "", "default", "none", "n/a"}

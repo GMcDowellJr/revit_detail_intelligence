@@ -511,6 +511,20 @@ def find_similar_views(query_view, corpus_views, top_n=5):
     return results[: max(0, int(top_n))]
 
 
+
+
+def find_similar_views_many_to_many(query_views, corpus_views, top_n=5):
+    """Forward-compatible placeholder for future many-to-many orchestration.
+
+    v0.3 intentionally does not implement corpus orchestration; this stub fails
+    safely and clearly so callers can feature-detect availability.
+    """
+
+    raise NotImplementedError(
+        "many-to-many comparison is not implemented in v0.3 yet; use one-to-many find_similar_views(...)"
+    )
+
+
 def view_label(view):
     try:
         return view.Name
