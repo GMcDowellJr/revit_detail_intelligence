@@ -6,9 +6,15 @@ from dse.cache.view_feature_cache import (
     get_cached_bundle_with_diagnostics,
     put_bundle_in_caches,
 )
-from dse.outputs.contact_sheet import write_contact_sheet_png
+from dse.outputs.contact_sheet import _save_png, write_contact_sheet_png
 from dse.pipelines.many_to_many import build_many_to_many_edges, write_many_to_many_outputs
 from dse.models import ViewFeatureBundle, ViewPresentationSummary, ViewSearchFeatures, ViewStateSignature
+
+
+
+
+def _write_tiny_png(path):
+    _save_png(path, 2, 2, bytes((255, 0, 0) * 4))
 
 
 def _bundle(view_id=10, state_hash="abc"):
@@ -104,11 +110,15 @@ def test_many_to_many_edges_and_output_files(tmp_path):
 
 def test_contact_sheet_png_emission(tmp_path):
     cfg = {"contact_sheets_dir": str(tmp_path / "sheets")}
+    _write_tiny_png(str(tmp_path / "p_seed.png"))
+    _write_tiny_png(str(tmp_path / "p1.png"))
+    _write_tiny_png(str(tmp_path / "p2.png"))
+
     path = write_contact_sheet_png(
-        {"view_id": 100, "display_name": "Seed", "source_doc_name": "doc"},
+        {"view_id": 100, "display_name": "Seed", "source_doc_name": "doc", "preview_path": str(tmp_path / "p_seed.png")},
         [
-            {"view_id": 101, "display_name": "Cand 1", "score_total": 0.91},
-            {"view_id": 102, "display_name": "Cand 2", "score_total": 0.84},
+            {"view_id": 101, "display_name": "Cand 1", "score_total": 0.91, "preview_path": str(tmp_path / "p1.png")},
+            {"view_id": 102, "display_name": "Cand 2", "score_total": 0.84, "preview_path": str(tmp_path / "p2.png")},
         ],
         cfg,
         run_id="sheet",

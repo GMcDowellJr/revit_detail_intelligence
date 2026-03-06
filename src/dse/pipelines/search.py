@@ -64,6 +64,7 @@ from dse.revit_api.geometry_2d import (
     get_2d_curves_in_view,
     to_view_local_2d,
 )
+from dse.revit_api.preview_export import get_or_create_view_preview
 
 SEARCH_SCHEMA_VERSION = "view_search_features.v0.3"
 
@@ -421,6 +422,10 @@ def extract_feature_bundle(view):
         key=lambda row: (-row[1], row[0]),
     )
     top_symbols = sorted(symbol_multiset.items(), key=lambda row: (-row[1], row[0]))
+    preview_path = None
+    if kind in ("DRAFTING", "DETAIL_DRAFTING", "DETAIL_MODEL"):
+        preview_path = get_or_create_view_preview(view, CONFIG, state_hash=state_hash)
+
     presentation = ViewPresentationSummary(
         view_id=view.Id.IntegerValue,
         source_doc_id=source_doc_id,
@@ -435,6 +440,7 @@ def extract_feature_bundle(view):
             "symbol_instances": int(sum(symbol_multiset.values())),
             "layout_nodes": int(layout.get("node_count", 0.0)),
         },
+        debug={"preview_path": preview_path} if preview_path else {},
     )
 
     return ViewFeatureBundle(
@@ -487,6 +493,7 @@ def _build_contact_sheet_for_results(query_bundle, results):
         "view_id": query_bundle.search_features.view_id,
         "display_name": query_bundle.presentation_summary.display_name,
         "source_doc_name": query_bundle.search_features.source_doc_name,
+        "preview_path": query_bundle.presentation_summary.debug.get("preview_path"),
     }
     cands = []
     for row in results[:max_cands]:
@@ -497,6 +504,7 @@ def _build_contact_sheet_for_results(query_bundle, results):
                 "display_name": ps.get("display_name") or "VIEW {}".format(row.get("candidate_view_id")),
                 "source_doc_name": ps.get("source_doc_name"),
                 "score_total": row.get("score_total", 0.0),
+                "preview_path": (ps.get("debug") or {}).get("preview_path"),
             }
         )
     return write_contact_sheet_png(seed, cands, CONFIG)

@@ -23,9 +23,14 @@ CONFIG = {
     "output_root": r"C:\temp\revit_detail_intelligence\output",
     "contact_sheets_dir": r"C:\temp\revit_detail_intelligence\output\contact_sheets",
     "many_to_many_output_dir": r"C:\temp\revit_detail_intelligence\output\many_to_many",
+    "preview_root": r"C:\temp\revit_detail_intelligence\previews",
+    "preview_longest_side": 2048,
     "contact_sheet": {
         "enabled": True,
         "top_n_candidates": 9,
+        "tile_width": 480,
+        "tile_height": 320,
+        "columns": 3,
     },
     "stage2_rerank": {
         "enabled": True,
