@@ -146,3 +146,33 @@ def test_contact_folder_and_runs_index_emission(tmp_path):
     with open(out["runs_index"], "r", encoding="utf-8") as handle:
         rows = handle.read().strip().splitlines()
     assert len(rows) == 3
+
+
+def test_contact_folder_uses_preview_cache_fallback(tmp_path):
+    cache_preview_dir = tmp_path / "cache" / "previews"
+    cache_preview_dir.mkdir(parents=True, exist_ok=True)
+    _write_tiny_png(str(cache_preview_dir / "view_200.png"))
+    _write_tiny_png(str(cache_preview_dir / "view_201.png"))
+
+    cfg = {"contacts_dir": str(tmp_path / "contacts"), "preview_root": str(cache_preview_dir)}
+    out = create_contact_folder(
+        {"view_id": 200, "display_name": "Seed"},
+        [
+            {
+                "candidate_view_id": 201,
+                "candidate_display_name": "Cand",
+                "rank": 1,
+                "total_score": 0.9,
+                "confidence_level": "high",
+            }
+        ],
+        cfg,
+        run_id="run_2",
+    )
+
+    files = sorted([f for f in os.listdir(out["contact_folder"]) if f.lower().endswith(".png")])
+    assert len(files) == 2
+    with open(out["results_path"], "r", encoding="utf-8") as handle:
+        payload = handle.read()
+    assert "seed_png_emitted" in payload
+    assert "contact_png_emitted" in payload

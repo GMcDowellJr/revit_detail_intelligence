@@ -24,6 +24,10 @@ def resolve_contacts_dir(config):
     return config.get("contacts_dir") or os.path.join(resolve_output_root(config), "contacts")
 
 
+def resolve_preview_cache_dir(config):
+    return config.get("preview_root") or os.path.join(resolve_cache_root(config), "previews")
+
+
 def ensure_dir(path):
     os.makedirs(path, exist_ok=True)
     return path
