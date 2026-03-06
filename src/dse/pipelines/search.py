@@ -3,7 +3,12 @@ import json
 import math
 import random
 
-from dse.cache.view_feature_cache import GLOBAL_VIEW_FEATURE_CACHE, ViewFeatureCacheEntry
+from dse.cache.view_feature_cache import (
+    GLOBAL_VIEW_FEATURE_CACHE,
+    get_cached_bundle_with_diagnostics,
+    put_bundle_in_caches,
+    resolve_view_cache_root,
+)
 from dse.config import CONFIG, TOKEN_STOPWORDS, default_idf_for_doc_count
 from dse.features.fine_metrics import build_fine_metrics
 from dse.features.geom_fingerprint import bin_index, geom_fingerprint_knn, normalize_l1, robust_scale
@@ -24,6 +29,8 @@ from dse.models import (
     ViewStateSignature,
     legacy_view_features_from_search,
 )
+from dse.outputs.contact_sheet import write_contact_sheet_png
+from dse.pipelines.many_to_many import build_many_to_many_edges, write_many_to_many_outputs
 from dse.ranking.similarity import (
     confidence_tier,
     cosine_similarity,
@@ -339,7 +346,9 @@ def extract_feature_bundle(view):
     fine.update(
         {
             "curve_count": float(len(curves)),
-            "line_length_total_norm": float(sum(getattr(c, "Length", 0.0) for c in curves) / max(scale, 1e-9)),
+            "line_length_total_norm": float(
+                sum(getattr(c, "Length", 0.0) for c in curves) / max(scale, 1e-9)
+            ),
             "orientation_entropy": float(
                 -sum(v * math.log(max(v, 1e-12), 2) for v in orientation_hist if v > 0.0)
             ),
@@ -444,25 +453,53 @@ def extract_features(view):
 
 def _extract_bundle_with_cache(view):
     fresh_bundle = extract_feature_bundle(view)
-    cached = GLOBAL_VIEW_FEATURE_CACHE.get_if_current(
+    cache_root = resolve_view_cache_root(CONFIG)
+    cached, status = get_cached_bundle_with_diagnostics(
+        in_memory_cache=GLOBAL_VIEW_FEATURE_CACHE,
+        cache_root=cache_root,
         view_id=fresh_bundle.state_signature.view_id,
         state_hash=fresh_bundle.state_signature.state_hash,
         pipeline_version=CONFIG["pipeline_version"],
         schema_version=SEARCH_SCHEMA_VERSION,
     )
     if cached is not None:
+        cached.presentation_summary.debug["cache_status"] = status
         return cached
 
-    GLOBAL_VIEW_FEATURE_CACHE.put(
-        ViewFeatureCacheEntry(
-            view_id=fresh_bundle.state_signature.view_id,
-            state_hash=fresh_bundle.state_signature.state_hash,
-            schema_version=SEARCH_SCHEMA_VERSION,
-            pipeline_version=CONFIG["pipeline_version"],
-            payload=fresh_bundle,
-        )
+    put_bundle_in_caches(
+        in_memory_cache=GLOBAL_VIEW_FEATURE_CACHE,
+        cache_root=cache_root,
+        view_id=fresh_bundle.state_signature.view_id,
+        state_hash=fresh_bundle.state_signature.state_hash,
+        pipeline_version=CONFIG["pipeline_version"],
+        schema_version=SEARCH_SCHEMA_VERSION,
+        payload=fresh_bundle,
     )
+    fresh_bundle.presentation_summary.debug["cache_status"] = "rebuilt" if status == "miss" else status
     return fresh_bundle
+
+
+def _build_contact_sheet_for_results(query_bundle, results):
+    if not CONFIG.get("contact_sheet", {}).get("enabled", True):
+        return None
+    max_cands = int(CONFIG.get("contact_sheet", {}).get("top_n_candidates", 9))
+    seed = {
+        "view_id": query_bundle.search_features.view_id,
+        "display_name": query_bundle.presentation_summary.display_name,
+        "source_doc_name": query_bundle.search_features.source_doc_name,
+    }
+    cands = []
+    for row in results[:max_cands]:
+        ps = row.get("presentation_summary") or {}
+        cands.append(
+            {
+                "view_id": row.get("candidate_view_id"),
+                "display_name": ps.get("display_name") or "VIEW {}".format(row.get("candidate_view_id")),
+                "source_doc_name": ps.get("source_doc_name"),
+                "score_total": row.get("score_total", 0.0),
+            }
+        )
+    return write_contact_sheet_png(seed, cands, CONFIG)
 
 
 def find_similar_views(query_view, corpus_views, top_n=5):
@@ -508,21 +545,88 @@ def find_similar_views(query_view, corpus_views, top_n=5):
         )
 
     results.sort(key=lambda r: (-r["score_total"], r["candidate_view_id"]))
-    return results[: max(0, int(top_n))]
+    trimmed = results[: max(0, int(top_n))]
+    contact_sheet_path = _build_contact_sheet_for_results(query_bundle, trimmed)
+    if contact_sheet_path is not None:
+        for row in trimmed:
+            row["contact_sheet_path"] = contact_sheet_path
+    return trimmed
 
 
-
-
-def find_similar_views_many_to_many(query_views, corpus_views, top_n=5):
-    """Forward-compatible placeholder for future many-to-many orchestration.
-
-    v0.3 intentionally does not implement corpus orchestration; this stub fails
-    safely and clearly so callers can feature-detect availability.
-    """
-
-    raise NotImplementedError(
-        "many-to-many comparison is not implemented in v0.3 yet; use one-to-many find_similar_views(...)"
+def find_similar_views_many_to_many(
+    query_views,
+    corpus_views,
+    top_n=None,
+    skip_self=None,
+    symmetric_dedupe=None,
+    write_output=None,
+):
+    top_k = int(top_n if top_n is not None else CONFIG.get("many_to_many", {}).get("top_k", 5))
+    skip_self_mode = (
+        bool(skip_self) if skip_self is not None else bool(CONFIG.get("many_to_many", {}).get("skip_self", True))
     )
+    dedupe_mode = (
+        bool(symmetric_dedupe)
+        if symmetric_dedupe is not None
+        else bool(CONFIG.get("many_to_many", {}).get("symmetric_dedupe", False))
+    )
+    write_mode = (
+        bool(write_output)
+        if write_output is not None
+        else bool(CONFIG.get("many_to_many", {}).get("write_output", True))
+    )
+
+    qviews = [v for v in query_views if is_view(v)]
+    cviews = [v for v in corpus_views if is_view(v)]
+
+    rows = []
+    for view in qviews:
+        bundle = _extract_bundle_with_cache(view)
+        legacy = legacy_view_features_from_search(bundle.search_features)
+        rows.append(
+            {
+                "view_id": legacy.view_id,
+                "display_name": bundle.presentation_summary.display_name,
+                "source_doc_id": bundle.search_features.source_doc_id,
+                "source_doc_name": bundle.search_features.source_doc_name,
+                "tokens": legacy.tokens,
+                "geom_fingerprint": legacy.geom_fingerprint,
+                "fine_metrics": legacy.fine_metrics,
+                "layout_graph_features": bundle.search_features.layout_graph_features,
+                "symbol_multiset": bundle.search_features.symbol_multiset,
+            }
+        )
+
+    known = {r["view_id"] for r in rows}
+    for view in cviews:
+        if view.Id.IntegerValue in known:
+            continue
+        bundle = _extract_bundle_with_cache(view)
+        legacy = legacy_view_features_from_search(bundle.search_features)
+        rows.append(
+            {
+                "view_id": legacy.view_id,
+                "display_name": bundle.presentation_summary.display_name,
+                "source_doc_id": bundle.search_features.source_doc_id,
+                "source_doc_name": bundle.search_features.source_doc_name,
+                "tokens": legacy.tokens,
+                "geom_fingerprint": legacy.geom_fingerprint,
+                "fine_metrics": legacy.fine_metrics,
+                "layout_graph_features": bundle.search_features.layout_graph_features,
+                "symbol_multiset": bundle.search_features.symbol_multiset,
+            }
+        )
+
+    edges = build_many_to_many_edges(
+        rows,
+        top_k=top_k,
+        skip_self=skip_self_mode,
+        symmetric_dedupe=dedupe_mode,
+    )
+    output = None
+    if write_mode:
+        output = write_many_to_many_outputs(edges, CONFIG)
+    return {"rows": edges, "output": output}
 
 
 def view_label(view):
