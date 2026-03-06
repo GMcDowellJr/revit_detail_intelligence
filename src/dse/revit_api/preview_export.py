@@ -1,41 +1,50 @@
 import os
+import struct
 
 from dse.io_paths import ensure_dir
 
 
-def _safe_view_name(view):
+def _preview_file_path(preview_root, view_id):
+    return os.path.join(preview_root, "view_{}.png".format(int(view_id)))
+
+
+def _png_size(path):
     try:
-        return str(view.Name)
+        with open(path, "rb") as handle:
+            head = handle.read(24)
+        if head[:8] != b"\x89PNG\r\n\x1a\n":
+            return None
+        if head[12:16] != b"IHDR":
+            return None
+        width = struct.unpack("!I", head[16:20])[0]
+        height = struct.unpack("!I", head[20:24])[0]
+        return (width, height)
     except Exception:
-        return "view"
+        return None
 
 
-def _preview_file_path(preview_root, view_id, state_hash=None):
-    suffix = ""
-    if state_hash:
-        suffix = "_{}".format(str(state_hash)[:12])
-    return os.path.join(preview_root, "view_{}{}.png".format(int(view_id), suffix))
+def _has_required_resolution(path, required_longest_side):
+    size = _png_size(path)
+    if size is None:
+        return False
+    longest = max(size[0], size[1])
+    return int(longest) >= int(required_longest_side)
 
 
-def get_or_create_view_preview(view, config, state_hash=None):
-    """Return preview PNG path for a view, exporting once and reusing if present."""
+def get_or_create_view_preview(view, config):
+    """Return cached full-resolution preview PNG path for a view."""
 
-    preview_root = ensure_dir(config.get("preview_root", r"C:\temp\revit_detail_intelligence\previews"))
+    preview_root = ensure_dir(
+        config.get("preview_root", r"C:\temp\revit_detail_intelligence\cache\previews")
+    )
     view_id = getattr(getattr(view, "Id", None), "IntegerValue", None)
     if view_id is None:
         return None
 
-    out_path = _preview_file_path(preview_root, view_id, state_hash=state_hash)
-    if os.path.exists(out_path):
+    required_side = int(config.get("preview_longest_side", 2400))
+    out_path = _preview_file_path(preview_root, view_id)
+    if os.path.exists(out_path) and _has_required_resolution(out_path, required_side):
         return out_path
-
-    # Fallback: reuse any previously exported preview for this view id even if hash suffix differs.
-    prefix = "view_{}".format(int(view_id))
-    for fname in os.listdir(preview_root):
-        if fname.startswith(prefix) and fname.lower().endswith(".png"):
-            candidate = os.path.join(preview_root, fname)
-            if os.path.exists(candidate):
-                return candidate
 
     try:
         import clr
@@ -47,6 +56,7 @@ def get_or_create_view_preview(view, config, state_hash=None):
             ImageExportOptions,
             ImageFileType,
             ImageResolution,
+            ZoomFitType,
         )
 
         opts = ImageExportOptions()
@@ -55,7 +65,8 @@ def get_or_create_view_preview(view, config, state_hash=None):
         opts.ShadowViewsFileType = ImageFileType.PNG
         opts.ImageResolution = ImageResolution.DPI_600
         opts.FitDirection = FitDirectionType.Horizontal
-        opts.PixelSize = int(config.get("preview_longest_side", 2048))
+        opts.ZoomType = ZoomFitType.FitToPage
+        opts.PixelSize = required_side
         opts.FilePath = os.path.splitext(out_path)[0]
         opts.SetViewsAndSheets([view.Id])
 

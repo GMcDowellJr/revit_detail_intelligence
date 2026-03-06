@@ -20,6 +20,10 @@ def resolve_many_to_many_dir(config):
     return config.get("many_to_many_output_dir") or os.path.join(resolve_output_root(config), "many_to_many")
 
 
+def resolve_contacts_dir(config):
+    return config.get("contacts_dir") or os.path.join(resolve_output_root(config), "contacts")
+
+
 def ensure_dir(path):
     os.makedirs(path, exist_ok=True)
     return path

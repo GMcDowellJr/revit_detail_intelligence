@@ -6,7 +6,8 @@ from dse.cache.view_feature_cache import (
     get_cached_bundle_with_diagnostics,
     put_bundle_in_caches,
 )
-from dse.outputs.contact_sheet import _save_png, write_contact_sheet_png
+from dse.outputs.contact_folder import create_contact_folder
+from dse.outputs.contact_sheet import _save_png
 from dse.pipelines.many_to_many import build_many_to_many_edges, write_many_to_many_outputs
 from dse.models import ViewFeatureBundle, ViewPresentationSummary, ViewSearchFeatures, ViewStateSignature
 
@@ -108,21 +109,40 @@ def test_many_to_many_edges_and_output_files(tmp_path):
     assert os.path.exists(out["csv_path"])
 
 
-def test_contact_sheet_png_emission(tmp_path):
-    cfg = {"contact_sheets_dir": str(tmp_path / "sheets")}
+def test_contact_folder_and_runs_index_emission(tmp_path):
+    cfg = {"contacts_dir": str(tmp_path / "contacts")}
     _write_tiny_png(str(tmp_path / "p_seed.png"))
     _write_tiny_png(str(tmp_path / "p1.png"))
     _write_tiny_png(str(tmp_path / "p2.png"))
 
-    path = write_contact_sheet_png(
-        {"view_id": 100, "display_name": "Seed", "source_doc_name": "doc", "preview_path": str(tmp_path / "p_seed.png")},
+    out = create_contact_folder(
+        {"view_id": 100, "display_name": "Seed", "preview_path": str(tmp_path / "p_seed.png")},
         [
-            {"view_id": 101, "display_name": "Cand 1", "score_total": 0.91, "preview_path": str(tmp_path / "p1.png")},
-            {"view_id": 102, "display_name": "Cand 2", "score_total": 0.84, "preview_path": str(tmp_path / "p2.png")},
+            {
+                "candidate_view_id": 101,
+                "candidate_display_name": "Cand 1",
+                "rank": 1,
+                "total_score": 0.91,
+                "confidence_level": "high",
+                "preview_path": str(tmp_path / "p1.png"),
+            },
+            {
+                "candidate_view_id": 102,
+                "candidate_display_name": "Cand 2",
+                "rank": 2,
+                "total_score": 0.84,
+                "confidence_level": "med",
+                "preview_path": str(tmp_path / "p2.png"),
+            },
         ],
         cfg,
-        run_id="sheet",
+        run_id="run_1",
     )
-    assert os.path.exists(path)
-    with open(path, "rb") as handle:
-        assert handle.read(8) == b"\x89PNG\r\n\x1a\n"
+
+    assert os.path.exists(out["contact_folder"])
+    assert os.path.exists(out["results_path"])
+    assert os.path.exists(out["runs_index"])
+
+    with open(out["runs_index"], "r", encoding="utf-8") as handle:
+        rows = handle.read().strip().splitlines()
+    assert len(rows) == 3

@@ -29,7 +29,7 @@ from dse.models import (
     ViewStateSignature,
     legacy_view_features_from_search,
 )
-from dse.outputs.contact_sheet import write_contact_sheet_png
+from dse.outputs.contact_folder import create_contact_folder
 from dse.pipelines.many_to_many import build_many_to_many_edges, write_many_to_many_outputs
 from dse.ranking.similarity import (
     confidence_tier,
@@ -422,10 +422,6 @@ def extract_feature_bundle(view):
         key=lambda row: (-row[1], row[0]),
     )
     top_symbols = sorted(symbol_multiset.items(), key=lambda row: (-row[1], row[0]))
-    preview_path = None
-    if kind in ("DRAFTING", "DETAIL_DRAFTING", "DETAIL_MODEL"):
-        preview_path = get_or_create_view_preview(view, CONFIG, state_hash=state_hash)
-
     presentation = ViewPresentationSummary(
         view_id=view.Id.IntegerValue,
         source_doc_id=source_doc_id,
@@ -440,7 +436,6 @@ def extract_feature_bundle(view):
             "symbol_instances": int(sum(symbol_multiset.values())),
             "layout_nodes": int(layout.get("node_count", 0.0)),
         },
-        debug={"preview_path": preview_path} if preview_path else {},
     )
 
     return ViewFeatureBundle(
@@ -485,37 +480,49 @@ def _extract_bundle_with_cache(view):
     return fresh_bundle
 
 
-def _build_contact_sheet_for_results(query_bundle, results):
-    if not CONFIG.get("contact_sheet", {}).get("enabled", True):
+def _build_contact_folder_for_results(query_view, query_bundle, ranked_rows, candidate_view_by_id):
+    if not ranked_rows:
         return None
-    max_cands = int(CONFIG.get("contact_sheet", {}).get("top_n_candidates", 9))
+
+    seed_preview = get_or_create_view_preview(query_view, CONFIG)
     seed = {
         "view_id": query_bundle.search_features.view_id,
         "display_name": query_bundle.presentation_summary.display_name,
-        "source_doc_name": query_bundle.search_features.source_doc_name,
-        "preview_path": query_bundle.presentation_summary.debug.get("preview_path"),
+        "preview_path": seed_preview,
     }
-    cands = []
-    for row in results[:max_cands]:
+
+    candidates = []
+    for row in ranked_rows:
+        cand_id = int(row.get("candidate_view_id", 0))
+        cand_view = candidate_view_by_id.get(cand_id)
+        cand_preview = get_or_create_view_preview(cand_view, CONFIG) if cand_view is not None else None
         ps = row.get("presentation_summary") or {}
-        cands.append(
+        candidates.append(
             {
-                "view_id": row.get("candidate_view_id"),
-                "display_name": ps.get("display_name") or "VIEW {}".format(row.get("candidate_view_id")),
-                "source_doc_name": ps.get("source_doc_name"),
-                "score_total": row.get("score_total", 0.0),
-                "preview_path": (ps.get("debug") or {}).get("preview_path"),
+                "seed_view_id": int(seed["view_id"]),
+                "seed_display_name": seed["display_name"],
+                "candidate_view_id": cand_id,
+                "candidate_display_name": ps.get("display_name") or "VIEW {}".format(cand_id),
+                "rank": int(row.get("rank", 0)),
+                "total_score": float(row.get("score_total", 0.0)),
+                "token_score": float(row.get("score_tokens", 0.0)),
+                "geometry_score": float(row.get("score_geom", 0.0)),
+                "layout_score": float((ps.get("feature_summary") or {}).get("layout_nodes", 0.0)),
+                "symbol_score": 0.0,
+                "confidence_level": str(row.get("confidence_tier", "LOW")).lower(),
+                "source_doc": ps.get("source_doc_name"),
+                "preview_path": cand_preview,
             }
         )
-    return write_contact_sheet_png(seed, cands, CONFIG)
+
+    return create_contact_folder(seed, candidates, CONFIG)
 
 
 def find_similar_views(query_view, corpus_views, top_n=5):
     query_bundle = _extract_bundle_with_cache(query_view)
     query_features = legacy_view_features_from_search(query_bundle.search_features)
-    corpus_bundles = [
-        _extract_bundle_with_cache(v) for v in corpus_views if is_view(v) and v.Id != query_view.Id
-    ]
+    corpus_view_objs = [v for v in corpus_views if is_view(v) and v.Id != query_view.Id]
+    corpus_bundles = [_extract_bundle_with_cache(v) for v in corpus_view_objs]
     corpus_feat = [legacy_view_features_from_search(bundle.search_features) for bundle in corpus_bundles]
 
     token_df, doc_count = build_token_df_from_features(corpus_feat)
@@ -554,10 +561,17 @@ def find_similar_views(query_view, corpus_views, top_n=5):
 
     results.sort(key=lambda r: (-r["score_total"], r["candidate_view_id"]))
     trimmed = results[: max(0, int(top_n))]
-    contact_sheet_path = _build_contact_sheet_for_results(query_bundle, trimmed)
-    if contact_sheet_path is not None:
+    for idx, row in enumerate(trimmed, 1):
+        row["rank"] = idx
+
+    candidate_view_by_id = {v.Id.IntegerValue: v for v in corpus_view_objs}
+    contact = _build_contact_folder_for_results(query_view, query_bundle, trimmed, candidate_view_by_id)
+    if contact is not None:
         for row in trimmed:
-            row["contact_sheet_path"] = contact_sheet_path
+            row["contact_folder"] = contact.get("contact_folder")
+            row["contact_results_path"] = contact.get("results_path")
+            row["runs_index_path"] = contact.get("runs_index")
+            row["run_id"] = contact.get("run_id")
     return trimmed
 
 
