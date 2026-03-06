@@ -42,7 +42,7 @@ def _resolve_preview_source(config, view_id, explicit_path=None):
 
 
 def _seed_file_name(seed):
-    return "seed__{}__id_{}.png".format(_slug(seed.get("display_name")), int(seed.get("view_id", 0)))
+    return "rank_00__{}__id_{}.png".format(_slug(seed.get("display_name")), int(seed.get("view_id", 0)))
 
 
 def _cand_file_name(row):

@@ -46,7 +46,7 @@ For one-to-many search, the system now creates a per-seed contact folder:
 
 Folder contents:
 
-- seed PNG: `seed__<view_name>__id_<view_id>.png`
+- seed PNG: `rank_00__<view_name>__id_<view_id>.png`
 - ranked candidate PNGs:
   - `rank_<NN>__score_<SCORE>__conf_<CONFIDENCE>__<view_name>__id_<view_id>.png`
 - `results.json` with ranking metadata
