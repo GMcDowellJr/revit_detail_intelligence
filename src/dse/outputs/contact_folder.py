@@ -1,4 +1,5 @@
 import csv
+import glob
 import json
 import os
 import re
@@ -28,15 +29,23 @@ def _resolve_preview_source(config, view_id, explicit_path=None):
     if explicit_path:
         candidates.append(explicit_path)
 
-    preview_root = resolve_preview_cache_dir(config)
-    candidates.append(os.path.join(preview_root, "view_{}.png".format(int(view_id))))
+    roots = [
+        resolve_preview_cache_dir(config),
+        # Back-compat with earlier default path used in previous revisions.
+        r"C:\temp\revit_detail_intelligence\previews",
+    ]
 
-    # Back-compat with earlier default path used in previous revisions.
-    legacy_root = r"C:\temp\revit_detail_intelligence\previews"
-    candidates.append(os.path.join(legacy_root, "view_{}.png".format(int(view_id))))
+    view_id_int = int(view_id)
+    for root in roots:
+        candidates.append(os.path.join(root, "view_{}.png".format(view_id_int)))
+        candidates.extend(sorted(glob.glob(os.path.join(root, "view_{}*.png".format(view_id_int)))))
 
+    seen = set()
     for path in candidates:
-        if path and os.path.exists(path):
+        if not path or path in seen:
+            continue
+        seen.add(path)
+        if os.path.exists(path):
             return path
     return None
 

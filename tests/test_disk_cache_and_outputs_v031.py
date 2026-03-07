@@ -144,6 +144,8 @@ def test_contact_folder_and_runs_index_emission(tmp_path):
     assert os.path.exists(out["contact_folder"])
     assert os.path.exists(out["results_path"])
     assert os.path.exists(out["runs_index"])
+    seed_files = [f for f in os.listdir(out["contact_folder"]) if f.startswith("rank_00__") and f.lower().endswith(".png")]
+    assert len(seed_files) == 1
 
     with open(out["runs_index"], "r", encoding="utf-8") as handle:
         rows = handle.read().strip().splitlines()
@@ -178,3 +180,30 @@ def test_contact_folder_uses_preview_cache_fallback(tmp_path):
         payload = handle.read()
     assert "seed_png_emitted" in payload
     assert "contact_png_emitted" in payload
+
+
+def test_contact_folder_resolves_export_suffix_preview_names(tmp_path):
+    cache_preview_dir = tmp_path / "cache" / "previews"
+    cache_preview_dir.mkdir(parents=True, exist_ok=True)
+    _write_tiny_png(str(cache_preview_dir / "view_300.0001.png"))
+    _write_tiny_png(str(cache_preview_dir / "view_301.0001.png"))
+
+    cfg = {"contacts_dir": str(tmp_path / "contacts"), "preview_root": str(cache_preview_dir)}
+    out = create_contact_folder(
+        {"view_id": 300, "display_name": "Seed"},
+        [
+            {
+                "candidate_view_id": 301,
+                "candidate_display_name": "Cand",
+                "rank": 1,
+                "total_score": 0.9,
+                "confidence_level": "high",
+            }
+        ],
+        cfg,
+        run_id="run_3",
+    )
+
+    files = sorted([f for f in os.listdir(out["contact_folder"]) if f.lower().endswith(".png")])
+    assert len(files) == 2
+    assert any(name.startswith("rank_00__") for name in files)
