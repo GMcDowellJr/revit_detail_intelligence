@@ -50,7 +50,7 @@ def test_disk_cache_roundtrip_and_invalidation(tmp_path):
     )
 
     mem.entries = {}
-    payload, status = get_cached_bundle_with_diagnostics(
+    payload, status, diag = get_cached_bundle_with_diagnostics(
         in_memory_cache=mem,
         cache_root=cache_root,
         view_id=77,
@@ -60,8 +60,9 @@ def test_disk_cache_roundtrip_and_invalidation(tmp_path):
     )
     assert payload is not None
     assert status == "hit_disk"
+    assert diag["lookup_path"] == ["memory", "disk"]
 
-    payload2, status2 = get_cached_bundle_with_diagnostics(
+    payload2, status2, diag2 = get_cached_bundle_with_diagnostics(
         in_memory_cache=mem,
         cache_root=cache_root,
         view_id=77,
@@ -71,6 +72,8 @@ def test_disk_cache_roundtrip_and_invalidation(tmp_path):
     )
     assert payload2 is None
     assert status2 == "invalidated"
+    assert diag2["miss_reason"] == "stale_record"
+    assert "state_hash" in diag2["mismatch_fields"]
 
 
 def test_many_to_many_edges_and_output_files(tmp_path):

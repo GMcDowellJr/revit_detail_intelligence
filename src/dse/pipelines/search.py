@@ -1,6 +1,7 @@
 import hashlib
 import json
 import math
+import os
 import random
 
 from dse.cache.view_feature_cache import (
@@ -80,15 +81,43 @@ def _string_or_none(value):
     return txt or None
 
 
+def _normalized_path(value):
+    txt = _string_or_none(value)
+    if txt is None:
+        return None
+    return os.path.normcase(os.path.normpath(txt))
+
+
 def _doc_provenance(view):
     doc = getattr(view, "Document", None)
     if doc is None:
         return None, None
-    doc_id = getattr(getattr(doc, "Application", None), "VersionBuild", None)
+
+    doc_id = None
+    try:
+        project_info = getattr(doc, "ProjectInformation", None)
+        doc_id = getattr(project_info, "UniqueId", None)
+    except Exception:
+        doc_id = None
+
     if doc_id is None:
-        doc_id = getattr(doc, "PathName", None)
+        doc_id = _normalized_path(getattr(doc, "PathName", None))
     doc_name = getattr(doc, "Title", None)
     return _string_or_none(doc_id), _string_or_none(doc_name)
+
+
+def _canonicalize_map(payload):
+    return {k: payload[k] for k in sorted(payload)}
+
+
+def _log_cache_diag(cache_root, row):
+    try:
+        path = os.path.join(cache_root, "view_features", "cache_diagnostics.jsonl")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(row, sort_keys=True, separators=(",", ":")) + "\n")
+    except Exception:
+        return
 
 
 def _view_settings_signature(view):
@@ -231,6 +260,16 @@ def _build_state_context(view):
     center_graph_hash = layout.get("center_graph_hash", "")
 
     source_scope = source_doc_id or source_doc_name or "<no-doc>"
+    view_identity = {
+        "view_id": int(view.Id.IntegerValue),
+        "view_kind": kind,
+    }
+    doc_identity = _canonicalize_map(
+        {
+            "source_doc_id": source_doc_id,
+            "source_doc_name": source_doc_name,
+        }
+    )
     state_payload = {
         "view_id": view.Id.IntegerValue,
         "view_kind": kind,
@@ -247,6 +286,12 @@ def _build_state_context(view):
         "search_schema_version": SEARCH_SCHEMA_VERSION,
     }
     state_hash = _stable_json_hash(state_payload)
+
+    state_hash_inputs = {
+        "view_identity": view_identity,
+        "document_identity": doc_identity,
+        "state_payload": state_payload,
+    }
 
     return {
         "kind": kind,
@@ -265,6 +310,7 @@ def _build_state_context(view):
         "content_bbox_q": content_bbox_q,
         "center_graph_hash": center_graph_hash,
         "state_payload": state_payload,
+        "state_hash_inputs": state_hash_inputs,
         "state_hash": state_hash,
     }
 
@@ -521,7 +567,7 @@ def extract_features(view):
 def _extract_bundle_with_cache(view):
     state_ctx = _build_state_context(view)
     cache_root = resolve_view_cache_root(CONFIG)
-    cached, status = get_cached_bundle_with_diagnostics(
+    cached, status, cache_diag = get_cached_bundle_with_diagnostics(
         in_memory_cache=GLOBAL_VIEW_FEATURE_CACHE,
         cache_root=cache_root,
         view_id=view.Id.IntegerValue,
@@ -529,8 +575,27 @@ def _extract_bundle_with_cache(view):
         pipeline_version=CONFIG["pipeline_version"],
         schema_version=SEARCH_SCHEMA_VERSION,
     )
+
+    diag_row = {
+        "view_id": int(view.Id.IntegerValue),
+        "cache_lookup_path": cache_diag.get("lookup_path", ["memory", "disk"]),
+        "cache_status": status,
+        "miss_reason": cache_diag.get("miss_reason"),
+        "mismatch_fields": cache_diag.get("mismatch_fields", []),
+        "view_identity_inputs": state_ctx["state_hash_inputs"]["view_identity"],
+        "document_identity_inputs": state_ctx["state_hash_inputs"]["document_identity"],
+        "state_hash_inputs": state_ctx["state_hash_inputs"]["state_payload"],
+        "computed_state_hash": state_ctx["state_hash"],
+        "schema_version": SEARCH_SCHEMA_VERSION,
+        "pipeline_version": CONFIG["pipeline_version"],
+    }
+    if cache_diag.get("cached") is not None:
+        diag_row["cached_record"] = cache_diag["cached"]
+    _log_cache_diag(cache_root, diag_row)
+
     if cached is not None:
         cached.presentation_summary.debug["cache_status"] = status
+        cached.presentation_summary.debug["cache_diag"] = diag_row
         return cached
 
     fresh_bundle = extract_feature_bundle(view, state_ctx=state_ctx)
@@ -544,6 +609,7 @@ def _extract_bundle_with_cache(view):
         payload=fresh_bundle,
     )
     fresh_bundle.presentation_summary.debug["cache_status"] = "rebuilt" if status == "miss" else status
+    fresh_bundle.presentation_summary.debug["cache_diag"] = diag_row
     return fresh_bundle
 
 

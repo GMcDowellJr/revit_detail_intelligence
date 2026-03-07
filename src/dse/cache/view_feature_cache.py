@@ -129,25 +129,44 @@ def get_cached_bundle_with_diagnostics(
     state_hash: str,
     pipeline_version: str,
     schema_version: str,
-) -> Tuple[Optional[ViewFeatureBundle], str]:
+) -> Tuple[Optional[ViewFeatureBundle], str, Dict[str, object]]:
     payload = in_memory_cache.get_if_current(view_id, state_hash, pipeline_version, schema_version)
     if payload is not None:
-        return payload, "hit_memory"
+        return payload, "hit_memory", {"lookup_path": ["memory"], "miss_reason": None}
 
     disk_entry = read_cache_record(cache_root, view_id)
     if disk_entry is None:
-        return None, "miss"
+        return None, "miss", {"lookup_path": ["memory", "disk"], "miss_reason": "missing_disk_record"}
 
+    mismatch_fields = []
+    if disk_entry.state_hash != state_hash:
+        mismatch_fields.append("state_hash")
+    if disk_entry.pipeline_version != pipeline_version:
+        mismatch_fields.append("pipeline_version")
+    if disk_entry.schema_version != schema_version:
+        mismatch_fields.append("schema_version")
     if (
-        disk_entry.state_hash != state_hash
-        or disk_entry.pipeline_version != pipeline_version
-        or disk_entry.schema_version != schema_version
+        mismatch_fields
     ):
         invalidate_cache_record(cache_root, view_id)
-        return None, "invalidated"
+        return None, "invalidated", {
+            "lookup_path": ["memory", "disk"],
+            "miss_reason": "stale_record",
+            "mismatch_fields": mismatch_fields,
+            "cached": {
+                "state_hash": disk_entry.state_hash,
+                "pipeline_version": disk_entry.pipeline_version,
+                "schema_version": disk_entry.schema_version,
+            },
+            "expected": {
+                "state_hash": state_hash,
+                "pipeline_version": pipeline_version,
+                "schema_version": schema_version,
+            },
+        }
 
     in_memory_cache.put(disk_entry)
-    return disk_entry.payload, "hit_disk"
+    return disk_entry.payload, "hit_disk", {"lookup_path": ["memory", "disk"], "miss_reason": None}
 
 
 def put_bundle_in_caches(
