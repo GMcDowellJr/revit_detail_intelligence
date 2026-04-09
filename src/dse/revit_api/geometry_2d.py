@@ -77,7 +77,7 @@ def element_geometry_curves(element, view=None):
     return curves
 
 
-def get_2d_curves_in_view(view, only_model_intersections=False, elements=None):
+def get_2d_curves_in_view(view, only_model_intersections=False, elements=None, element_curves=None):
     curves = []
     seen_curve_ids = set()
     source = elements if elements is not None else get_view_elements(view)
@@ -97,7 +97,15 @@ def get_2d_curves_in_view(view, only_model_intersections=False, elements=None):
             continue
 
         if isinstance(elem, (FamilyInstance, FilledRegion)):
-            for curve in element_geometry_curves(elem, view=view):
+            curves_for_elem = None
+            if element_curves is not None:
+                try:
+                    curves_for_elem = element_curves.get(elem.Id.IntegerValue)
+                except Exception:
+                    curves_for_elem = None
+            if curves_for_elem is None:
+                curves_for_elem = element_geometry_curves(elem, view=view)
+            for curve in curves_for_elem:
                 key = None
                 try:
                     p0 = curve.GetEndPoint(0)
@@ -181,8 +189,8 @@ def geometry_summary_for_element(element, view=None):
     }
 
 
-def element_layout_signature(element, view=None):
-    curves = element_geometry_curves(element, view=view)
+def element_layout_signature(element, view=None, curves=None):
+    curves = curves if curves is not None else element_geometry_curves(element, view=view)
     pts = endpoints_from_curves(curves)
     if not pts:
         return None

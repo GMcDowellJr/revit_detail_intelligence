@@ -59,6 +59,7 @@ from dse.revit_api.collect import (
 )
 from dse.revit_api.geometry_2d import (
     dedupe_points_by_grid,
+    element_geometry_curves,
     element_layout_signature,
     endpoints_from_curves,
     geometry_summary_for_element,
@@ -158,10 +159,13 @@ def _normalized_length_hist(curves, scale):
     return normalize_l1(hist)
 
 
-def _layout_graph_features(view, elements):
+def _layout_graph_features(view, elements, element_curves=None):
     rows = []
     for elem in elements:
-        sig = element_layout_signature(elem, view=view)
+        curves_for_elem = None
+        if element_curves is not None:
+            curves_for_elem = element_curves.get(elem.Id.IntegerValue)
+        sig = element_layout_signature(elem, view=view, curves=curves_for_elem)
         if sig is None:
             continue
         cx, cy = sig["center"]
@@ -200,6 +204,12 @@ def _layout_graph_features(view, elements):
 
 def _build_state_context(view):
     all_elements = get_view_elements(view)
+    element_curves = {}
+    for elem in all_elements:
+        elem_id = getattr(getattr(elem, "Id", None), "IntegerValue", None)
+        if elem_id is None:
+            continue
+        element_curves[int(elem_id)] = element_geometry_curves(elem, view=view)
     kind = classify_view_kind(view, elements=all_elements)
     source_doc_id, source_doc_name = _doc_provenance(view)
     raw_tokens, _, _ = collect_token_data_for_view(
@@ -207,7 +217,10 @@ def _build_state_context(view):
     )
 
     curves = get_2d_curves_in_view(
-        view, only_model_intersections=(kind == "DETAIL_MODEL"), elements=all_elements
+        view,
+        only_model_intersections=(kind == "DETAIL_MODEL"),
+        elements=all_elements,
+        element_curves=element_curves,
     )
     pts = endpoints_from_curves(curves)
     pts = dedupe_points_by_grid(pts, CONFIG["tol_coord"])
@@ -225,7 +238,7 @@ def _build_state_context(view):
         }
     )
 
-    layout = _layout_graph_features(view, all_elements)
+    layout = _layout_graph_features(view, all_elements, element_curves=element_curves)
     content_bbox_q = [
         round(min((p[0] for p in ptsn), default=0.0), 3),
         round(min((p[1] for p in ptsn), default=0.0), 3),
