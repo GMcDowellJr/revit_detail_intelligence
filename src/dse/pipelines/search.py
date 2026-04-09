@@ -60,6 +60,7 @@ from dse.revit_api.collect import (
 from dse.revit_api.geometry_2d import (
     dedupe_points_by_grid,
     element_geometry_curves,
+    element_curve_cache_key,
     element_layout_signature,
     endpoints_from_curves,
     geometry_summary_for_element,
@@ -164,7 +165,9 @@ def _layout_graph_features(view, elements, element_curves=None):
     for elem in elements:
         curves_for_elem = None
         if element_curves is not None:
-            curves_for_elem = element_curves.get(elem.Id.IntegerValue)
+            cache_key = element_curve_cache_key(elem)
+            if cache_key is not None:
+                curves_for_elem = element_curves.get(cache_key)
         sig = element_layout_signature(elem, view=view, curves=curves_for_elem)
         if sig is None:
             continue
@@ -206,10 +209,10 @@ def _build_state_context(view):
     all_elements = get_view_elements(view)
     element_curves = {}
     for elem in all_elements:
-        elem_id = getattr(getattr(elem, "Id", None), "IntegerValue", None)
-        if elem_id is None:
+        cache_key = element_curve_cache_key(elem)
+        if cache_key is None:
             continue
-        element_curves[int(elem_id)] = element_geometry_curves(elem, view=view)
+        element_curves[cache_key] = element_geometry_curves(elem, view=view)
     kind = classify_view_kind(view, elements=all_elements)
     source_doc_id, source_doc_name = _doc_provenance(view)
     raw_tokens, _, _ = collect_token_data_for_view(
