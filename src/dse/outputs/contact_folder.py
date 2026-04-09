@@ -3,7 +3,6 @@ import json
 import os
 import re
 import shutil
-from glob import glob
 
 from dse.io_paths import ensure_dir, resolve_contacts_dir, resolve_preview_cache_dir, run_stamp
 
@@ -25,8 +24,14 @@ def _copy_if_present(src, dst):
 def _latest_preview_match(root, view_id):
     if not root or not os.path.isdir(root):
         return None
-    pattern = os.path.join(root, "view_{}*.png".format(int(view_id)))
-    matches = [p for p in glob(pattern) if os.path.exists(p)]
+    pattern = re.compile(r"^view_{}(?:[^0-9].*)?\.png$".format(int(view_id)))
+    matches = []
+    for name in os.listdir(root):
+        if not pattern.match(name):
+            continue
+        path = os.path.join(root, name)
+        if os.path.exists(path):
+            matches.append(path)
     if not matches:
         return None
     matches.sort(key=lambda p: os.path.getmtime(p), reverse=True)
