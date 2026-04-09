@@ -3,7 +3,7 @@ from collections import defaultdict
 from dse.config import CONFIG, TOKEN_STOPWORDS
 
 _UNKNOWN_TYPE_NAME_SENTINEL = ""
-_type_sig_cache: dict[int, str] = {}
+_type_sig_cache: dict[tuple[int, int], str] = {}
 
 
 def is_valid_token_value(value):
@@ -48,22 +48,47 @@ def safe_name(obj, fallback="<none>"):
         return fallback
 
 
+def _resolve_type_cache_key(element, type_id):
+    if element is None or type_id is None:
+        return None
+
+    doc = getattr(element, "Document", None)
+    if doc is None:
+        return None
+
+    # Scope cache by document identity because ElementId values are only unique per-document.
+    try:
+        doc_key = doc.GetHashCode()
+    except Exception:
+        return None
+
+    # Revit 2024+ ElementId is Int64-backed; prefer .Value to avoid IntegerValue overflow aliasing.
+    try:
+        type_id_value = type_id.Value
+    except Exception:
+        try:
+            type_id_value = type_id.IntegerValue
+        except Exception:
+            return None
+
+    return (doc_key, int(type_id_value))
+
+
 def resolve_type_name(element, fallback="<unknown-type>"):
     if element is None:
         return fallback
 
     type_id = None
-    type_id_int = None
+    type_cache_key = None
     try:
         type_id = element.GetTypeId()
-        if type_id is not None:
-            type_id_int = type_id.IntegerValue
+        type_cache_key = _resolve_type_cache_key(element, type_id)
     except Exception:
         type_id = None
-        type_id_int = None
+        type_cache_key = None
 
-    if type_id_int is not None:
-        cached_type_name = _type_sig_cache.get(type_id_int)
+    if type_cache_key is not None:
+        cached_type_name = _type_sig_cache.get(type_cache_key)
         if cached_type_name is not None:
             return cached_type_name if cached_type_name != _UNKNOWN_TYPE_NAME_SENTINEL else fallback
 
@@ -79,8 +104,8 @@ def resolve_type_name(element, fallback="<unknown-type>"):
         except Exception:
             pass
     if resolved_type_name is not None:
-        if type_id_int is not None:
-            _type_sig_cache[type_id_int] = resolved_type_name
+        if type_cache_key is not None:
+            _type_sig_cache[type_cache_key] = resolved_type_name
         return resolved_type_name
 
     # TextNote / Dimension: access their dedicated type-element properties directly.
@@ -101,8 +126,8 @@ def resolve_type_name(element, fallback="<unknown-type>"):
         except Exception:
             pass
     if resolved_type_name is not None:
-        if type_id_int is not None:
-            _type_sig_cache[type_id_int] = resolved_type_name
+        if type_cache_key is not None:
+            _type_sig_cache[type_cache_key] = resolved_type_name
         return resolved_type_name
 
     # Generic fallback: GetTypeId() → Document.GetElement() → .Name
@@ -123,8 +148,8 @@ def resolve_type_name(element, fallback="<unknown-type>"):
         except Exception:
             pass
     if resolved_type_name is not None:
-        if type_id_int is not None:
-            _type_sig_cache[type_id_int] = resolved_type_name
+        if type_cache_key is not None:
+            _type_sig_cache[type_cache_key] = resolved_type_name
         return resolved_type_name
 
     # BuiltInParameter fallback: reads type name from instance string parameter, bypassing
@@ -141,12 +166,12 @@ def resolve_type_name(element, fallback="<unknown-type>"):
         pass
 
     if resolved_type_name is not None:
-        if type_id_int is not None:
-            _type_sig_cache[type_id_int] = resolved_type_name
+        if type_cache_key is not None:
+            _type_sig_cache[type_cache_key] = resolved_type_name
         return resolved_type_name
 
-    if type_id_int is not None:
-        _type_sig_cache[type_id_int] = _UNKNOWN_TYPE_NAME_SENTINEL
+    if type_cache_key is not None:
+        _type_sig_cache[type_cache_key] = _UNKNOWN_TYPE_NAME_SENTINEL
 
     return fallback
 
