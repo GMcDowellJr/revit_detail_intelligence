@@ -2,6 +2,9 @@ from collections import defaultdict
 
 from dse.config import CONFIG, TOKEN_STOPWORDS
 
+_UNKNOWN_TYPE_NAME_SENTINEL = ""
+_type_sig_cache: dict[int, str] = {}
+
 
 def is_valid_token_value(value):
     txt = "" if value is None else str(value).strip()
@@ -49,15 +52,36 @@ def resolve_type_name(element, fallback="<unknown-type>"):
     if element is None:
         return fallback
 
+    type_id = None
+    type_id_int = None
+    try:
+        type_id = element.GetTypeId()
+        if type_id is not None:
+            type_id_int = type_id.IntegerValue
+    except Exception:
+        type_id = None
+        type_id_int = None
+
+    if type_id_int is not None:
+        cached_type_name = _type_sig_cache.get(type_id_int)
+        if cached_type_name is not None:
+            return cached_type_name if cached_type_name != _UNKNOWN_TYPE_NAME_SENTINEL else fallback
+
+    resolved_type_name = None
+
     # FamilyInstance: Symbol.Name is most reliable in CPython3/Python.NET hosts.
     symbol = getattr(element, "Symbol", None)
     if symbol is not None:
         try:
             type_name = safe_name(symbol, fallback=fallback)
             if is_valid_token_value(type_name):
-                return type_name
+                resolved_type_name = type_name
         except Exception:
             pass
+    if resolved_type_name is not None:
+        if type_id_int is not None:
+            _type_sig_cache[type_id_int] = resolved_type_name
+        return resolved_type_name
 
     # TextNote / Dimension: access their dedicated type-element properties directly.
     # getattr(obj, "TextNoteType") can resolve to the CLR class object instead of the
@@ -72,9 +96,14 @@ def resolve_type_name(element, fallback="<unknown-type>"):
             if type_obj is not None:
                 type_name = safe_name(type_obj, fallback=fallback)
                 if is_valid_token_value(type_name):
-                    return type_name
+                    resolved_type_name = type_name
+                    break
         except Exception:
             pass
+    if resolved_type_name is not None:
+        if type_id_int is not None:
+            _type_sig_cache[type_id_int] = resolved_type_name
+        return resolved_type_name
 
     # Generic fallback: GetTypeId() → Document.GetElement() → .Name
     # Do not check IntegerValue == -1: in Revit 2024+ ElementId uses Int64, and large
@@ -84,16 +113,19 @@ def resolve_type_name(element, fallback="<unknown-type>"):
     if doc is None:
         return fallback
 
-    try:
-        type_id = element.GetTypeId()
-        if type_id is not None:
+    if type_id is not None:
+        try:
             type_elem = doc.GetElement(type_id)
             if type_elem is not None:
                 type_name = safe_name(type_elem, fallback=fallback)
                 if is_valid_token_value(type_name):
-                    return type_name
-    except Exception:
-        pass
+                    resolved_type_name = type_name
+        except Exception:
+            pass
+    if resolved_type_name is not None:
+        if type_id_int is not None:
+            _type_sig_cache[type_id_int] = resolved_type_name
+        return resolved_type_name
 
     # BuiltInParameter fallback: reads type name from instance string parameter, bypassing
     # the Python.NET 3.x issue where .Name on Revit type elements raises an exception.
@@ -104,9 +136,17 @@ def resolve_type_name(element, fallback="<unknown-type>"):
 
         val = element_type_name_from_params(element)
         if val and is_valid_token_value(val):
-            return val
+            resolved_type_name = val
     except Exception:
         pass
+
+    if resolved_type_name is not None:
+        if type_id_int is not None:
+            _type_sig_cache[type_id_int] = resolved_type_name
+        return resolved_type_name
+
+    if type_id_int is not None:
+        _type_sig_cache[type_id_int] = _UNKNOWN_TYPE_NAME_SENTINEL
 
     return fallback
 
