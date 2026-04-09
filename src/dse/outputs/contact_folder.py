@@ -3,6 +3,7 @@ import json
 import os
 import re
 import shutil
+from glob import glob
 
 from dse.io_paths import ensure_dir, resolve_contacts_dir, resolve_preview_cache_dir, run_stamp
 
@@ -21,6 +22,17 @@ def _copy_if_present(src, dst):
     return True
 
 
+def _latest_preview_match(root, view_id):
+    if not root or not os.path.isdir(root):
+        return None
+    pattern = os.path.join(root, "view_{}*.png".format(int(view_id)))
+    matches = [p for p in glob(pattern) if os.path.exists(p)]
+    if not matches:
+        return None
+    matches.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+    return matches[0]
+
+
 
 
 def _resolve_preview_source(config, view_id, explicit_path=None):
@@ -30,10 +42,16 @@ def _resolve_preview_source(config, view_id, explicit_path=None):
 
     preview_root = resolve_preview_cache_dir(config)
     candidates.append(os.path.join(preview_root, "view_{}.png".format(int(view_id))))
+    latest_preview_root_match = _latest_preview_match(preview_root, view_id)
+    if latest_preview_root_match:
+        candidates.append(latest_preview_root_match)
 
     # Back-compat with earlier default path used in previous revisions.
     legacy_root = r"C:\temp\revit_detail_intelligence\previews"
     candidates.append(os.path.join(legacy_root, "view_{}.png".format(int(view_id))))
+    latest_legacy_match = _latest_preview_match(legacy_root, view_id)
+    if latest_legacy_match:
+        candidates.append(latest_legacy_match)
 
     for path in candidates:
         if path and os.path.exists(path):
