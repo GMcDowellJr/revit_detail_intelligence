@@ -77,10 +77,11 @@ def element_geometry_curves(element, view=None):
     return curves
 
 
-def get_2d_curves_in_view(view, only_model_intersections=False):
+def get_2d_curves_in_view(view, only_model_intersections=False, elements=None):
     curves = []
     seen_curve_ids = set()
-    for elem in get_view_elements(view):
+    source = elements if elements is not None else get_view_elements(view)
+    for elem in source:
         if isinstance(elem, CurveElement):
             if only_model_intersections and isinstance(elem, (DetailCurve, DetailLine)):
                 continue

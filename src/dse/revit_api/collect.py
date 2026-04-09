@@ -128,9 +128,10 @@ def get_view_elements(view):
     return list(FilteredElementCollector(doc, view.Id).WhereElementIsNotElementType().ToElements())
 
 
-def get_model_elements_contributing_to_view(view):
+def get_model_elements_contributing_to_view(view, elements=None):
     elems = []
-    for elem in get_view_elements(view):
+    source = elements if elements is not None else get_view_elements(view)
+    for elem in source:
         cat = elem.Category
         if cat is None:
             continue
@@ -148,12 +149,13 @@ def is_annotation_like(element):
     return False
 
 
-def classify_view_kind(view):
+def classify_view_kind(view, elements=None):
     if view.ViewType == ViewType.DraftingView:
         return "DRAFTING"
     if view.ViewType in (ViewType.Detail, ViewType.Section, ViewType.Elevation):
         has_model = any(
-            category_type_label(e.Category) != "Annotation" for e in get_view_elements(view)
+            category_type_label(e.Category) != "Annotation"
+            for e in (elements if elements is not None else get_view_elements(view))
         )
         return "DETAIL_MODEL" if has_model else "DETAIL_DRAFTING"
     return "DETAIL_DRAFTING"

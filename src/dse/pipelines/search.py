@@ -199,11 +199,16 @@ def _layout_graph_features(view, elements):
 
 
 def _build_state_context(view):
-    kind = classify_view_kind(view)
+    all_elements = get_view_elements(view)
+    kind = classify_view_kind(view, elements=all_elements)
     source_doc_id, source_doc_name = _doc_provenance(view)
-    raw_tokens, _, _ = collect_token_data_for_view(view, kind, include_element_report=False)
+    raw_tokens, _, _ = collect_token_data_for_view(
+        view, kind, include_element_report=False, elements=all_elements
+    )
 
-    curves = get_2d_curves_in_view(view, only_model_intersections=(kind == "DETAIL_MODEL"))
+    curves = get_2d_curves_in_view(
+        view, only_model_intersections=(kind == "DETAIL_MODEL"), elements=all_elements
+    )
     pts = endpoints_from_curves(curves)
     pts = dedupe_points_by_grid(pts, CONFIG["tol_coord"])
     pts2 = to_view_local_2d(pts, view)
@@ -220,7 +225,6 @@ def _build_state_context(view):
         }
     )
 
-    all_elements = get_view_elements(view)
     layout = _layout_graph_features(view, all_elements)
     content_bbox_q = [
         round(min((p[0] for p in ptsn), default=0.0), 3),
@@ -277,7 +281,7 @@ def element_base_info(element):
     }
 
 
-def collect_token_data_for_view(view, kind, tokens=None, include_element_report=False):
+def collect_token_data_for_view(view, kind, tokens=None, include_element_report=False, elements=None):
     token_store = tokens if tokens is not None else new_token_store()
     element_report = []
     summary = {
@@ -318,7 +322,7 @@ def collect_token_data_for_view(view, kind, tokens=None, include_element_report=
             element_report.append(row)
 
     if kind == "DETAIL_MODEL":
-        for elem in get_model_elements_contributing_to_view(view):
+        for elem in get_model_elements_contributing_to_view(view, elements=elements):
             cat_name = collect_safe_name(elem.Category, "<no-category>")
             tsig = type_signature(elem)
             category_emitted = emit_token(token_store, "category", cat_name, "category")
@@ -331,7 +335,8 @@ def collect_token_data_for_view(view, kind, tokens=None, include_element_report=
                 collected=True,
             )
     else:
-        for elem in get_view_elements(view):
+        source_elements = elements if elements is not None else get_view_elements(view)
+        for elem in source_elements:
             if not is_annotation_like(elem):
                 continue
             added_tokens = []
