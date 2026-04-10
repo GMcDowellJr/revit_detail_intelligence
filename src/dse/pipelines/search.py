@@ -49,6 +49,7 @@ from dse.pipelines.many_to_many import build_many_to_many_edges, write_many_to_m
 from dse.ranking.similarity import (
     confidence_tier,
     cosine_similarity,
+    derive_min_token_threshold,
     effective_weights,
     explain_match,
     fine_similarity,
@@ -798,11 +799,15 @@ def find_similar_views(query_view, top_n=5):
     index_payload = index_accum.finalize(token_idf, token_df, CONFIG)
     write_json_sidecar(index_sidecar_path, index_payload)
 
+    min_token_threshold = derive_min_token_threshold(corpus_feat)
+
     diag.start_timer("pairwise_scoring_total")
     results = []
     for idx, candidate in enumerate(corpus_feat):
         bundle = corpus_bundles[idx]
-        weights = effective_weights(query_features, candidate)
+        weights = effective_weights(
+            query_features, candidate, min_token_threshold=min_token_threshold
+        )
         s_tokens = token_similarity(
             query_features.tokens,
             candidate.tokens,

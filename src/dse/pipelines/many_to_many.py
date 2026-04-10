@@ -109,6 +109,8 @@ def write_many_to_many_outputs(rows, config, run_id=None):
 
     if rows:
         fieldnames = list(rows[0].keys())
+        if "confidence_tier" not in fieldnames:
+            fieldnames.append("confidence_tier")
     else:
         fieldnames = [
             "seed_view_id",
@@ -121,6 +123,7 @@ def write_many_to_many_outputs(rows, config, run_id=None):
             "geometry_score",
             "layout_score",
             "symbol_score",
+            "confidence_tier",
             "same_view",
             "source_doc_id",
             "source_doc_name",

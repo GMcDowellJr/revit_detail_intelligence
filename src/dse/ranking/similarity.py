@@ -47,8 +47,24 @@ def fine_similarity(fa, fb):
     return 0.5 * s1 + 0.5 * s2
 
 
-def effective_weights(query_features, candidate_features):
-    min_tokens = int(CONFIG.get("min_token_threshold", 4))
+def derive_min_token_threshold(corpus_features):
+    sizes = sorted(len(feature.tokens) for feature in corpus_features)
+    floor = int(CONFIG.get("min_token_threshold_floor", CONFIG.get("min_token_threshold", 4)))
+    ceiling = int(CONFIG.get("min_token_threshold_ceiling", floor))
+    percentile = float(CONFIG.get("min_token_threshold_percentile", 10))
+    if not sizes:
+        return max(floor, min(ceiling, int(CONFIG.get("min_token_threshold", floor))))
+    idx = int((max(0.0, min(100.0, percentile)) / 100.0) * (len(sizes) - 1))
+    raw = sizes[idx]
+    return max(floor, min(ceiling, raw))
+
+
+def effective_weights(query_features, candidate_features, min_token_threshold=None):
+    min_tokens = int(
+        min_token_threshold
+        if min_token_threshold is not None
+        else CONFIG.get("min_token_threshold", 4)
+    )
     if len(query_features.tokens) < min_tokens or len(candidate_features.tokens) < min_tokens:
         return CONFIG.get("low_semantic_weights", CONFIG["weights"])
     return CONFIG["weights"]
