@@ -49,12 +49,19 @@ _install_revit_stubs()
 from dse.pipelines import search  # noqa: E402
 
 
-def _bundle(view_id, cache_status="rebuilt"):
+def _bundle(view_id, cache_status="rebuilt", source_doc_id="doc-a", state_hash=None):
+    shash = state_hash or "s{}".format(view_id)
     return ViewFeatureBundle(
-        state_signature=ViewStateSignature(view_id=view_id, view_kind="DRAFTING", state_hash="s{}".format(view_id)),
+        state_signature=ViewStateSignature(
+            view_id=view_id,
+            view_kind="DRAFTING",
+            source_doc_id=source_doc_id,
+            state_hash=shash,
+        ),
         search_features=ViewSearchFeatures(
             view_id=view_id,
             view_kind="DRAFTING",
+            source_doc_id=source_doc_id,
             tokens_stable={"type_sig:A|B": 1.0},
             tokens_context={"line_style:Thin": 1.0},
             geom_hist_knn_endpoints=[1.0, 0.0],
@@ -105,6 +112,30 @@ def test_index_views_mixed_cache_hit_and_miss(monkeypatch):
     assert summary["cache_statuses"] == {1: "hit_disk", 2: "rebuilt"}
 
 
+def test_index_views_writes_doc_scoped_cache_files(monkeypatch, tmp_path):
+    class FakeId(object):
+        def __init__(self, value):
+            self.IntegerValue = value
+
+    class FakeView(object):
+        def __init__(self, value):
+            self.Id = FakeId(value)
+
+    monkeypatch.setattr(search, "is_view", lambda value: hasattr(value, "Id"))
+    monkeypatch.setattr(search, "resolve_view_cache_root", lambda _cfg: str(tmp_path / "cache"))
+    monkeypatch.setattr(
+        search,
+        "_extract_bundle_with_cache",
+        lambda view: _bundle(view.Id.IntegerValue, source_doc_id="doc-x"),
+    )
+
+    summary = search.index_views([FakeView(9)])
+    assert summary["indexed"] == 1
+    out_dir = tmp_path / "cache" / "view_features"
+    files = sorted([name for name in os.listdir(str(out_dir)) if name.startswith("view_9__doc_")])
+    assert len(files) == 1
+
+
 def test_load_all_cached_bundles_empty_dir(tmp_path):
     cache_root = str(tmp_path / "cache")
     os.makedirs(os.path.join(cache_root, "view_features"), exist_ok=True)
@@ -122,7 +153,7 @@ def test_load_all_cached_bundles_skips_corrupt_and_returns_valid(tmp_path):
             state_hash="s{}".format(view_id),
             schema_version=search.SEARCH_SCHEMA_VERSION,
             pipeline_version=CONFIG["pipeline_version"],
-            payload=_bundle(view_id),
+            payload=_bundle(view_id, source_doc_id="doc-{}".format(view_id)),
         )
         with open(os.path.join(view_dir, "view_{}.json".format(view_id)), "w", encoding="utf-8") as handle:
             handle.write(serialize_cache_entry(entry))
@@ -132,7 +163,7 @@ def test_load_all_cached_bundles_skips_corrupt_and_returns_valid(tmp_path):
         state_hash="s13",
         schema_version="view_search_features.v0.1",
         pipeline_version=CONFIG["pipeline_version"],
-        payload=_bundle(13),
+        payload=_bundle(13, source_doc_id="doc-stale-schema"),
     )
     with open(os.path.join(view_dir, "view_13.json"), "w", encoding="utf-8") as handle:
         handle.write(serialize_cache_entry(stale))
@@ -142,7 +173,7 @@ def test_load_all_cached_bundles_skips_corrupt_and_returns_valid(tmp_path):
         state_hash="s14",
         schema_version=search.SEARCH_SCHEMA_VERSION,
         pipeline_version="old-pipeline-version",
-        payload=_bundle(14),
+        payload=_bundle(14, source_doc_id="doc-stale-pipeline"),
     )
     with open(os.path.join(view_dir, "view_14.json"), "w", encoding="utf-8") as handle:
         handle.write(serialize_cache_entry(stale_pipeline))
@@ -152,3 +183,42 @@ def test_load_all_cached_bundles_skips_corrupt_and_returns_valid(tmp_path):
 
     loaded = search._load_all_cached_bundles(cache_root)
     assert sorted(bundle.search_features.view_id for bundle in loaded) == [11, 12]
+
+
+def test_load_all_cached_bundles_includes_doc_scoped_view_id_collisions(tmp_path):
+    cache_root = str(tmp_path / "cache")
+    view_dir = os.path.join(cache_root, "view_features")
+    os.makedirs(view_dir, exist_ok=True)
+
+    b1 = _bundle(77, source_doc_id="doc-one", state_hash="s-1")
+    b2 = _bundle(77, source_doc_id="doc-two", state_hash="s-2")
+
+    for idx, bundle in enumerate((b1, b2), start=1):
+        entry = ViewFeatureCacheEntry(
+            view_id=77,
+            state_hash=bundle.state_signature.state_hash,
+            schema_version=search.SEARCH_SCHEMA_VERSION,
+            pipeline_version=CONFIG["pipeline_version"],
+            payload=bundle,
+        )
+        path = os.path.join(view_dir, "view_77__doc_{}.json".format(idx))
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(serialize_cache_entry(entry))
+
+    # Duplicate payload in legacy non-scoped file should be de-duped by source+view+state key.
+    duplicate = ViewFeatureCacheEntry(
+        view_id=77,
+        state_hash=b1.state_signature.state_hash,
+        schema_version=search.SEARCH_SCHEMA_VERSION,
+        pipeline_version=CONFIG["pipeline_version"],
+        payload=b1,
+    )
+    with open(os.path.join(view_dir, "view_77.json"), "w", encoding="utf-8") as handle:
+        handle.write(serialize_cache_entry(duplicate))
+
+    loaded = search._load_all_cached_bundles(cache_root)
+    assert len(loaded) == 2
+    assert sorted((b.search_features.source_doc_id, b.state_signature.state_hash) for b in loaded) == [
+        ("doc-one", "s-1"),
+        ("doc-two", "s-2"),
+    ]

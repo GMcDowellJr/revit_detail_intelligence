@@ -6,10 +6,12 @@ import random
 
 from dse.cache.view_feature_cache import (
     GLOBAL_VIEW_FEATURE_CACHE,
+    ViewFeatureCacheEntry,
     deserialize_cache_entry,
     get_cached_bundle_with_diagnostics,
     put_bundle_in_caches,
     resolve_view_cache_root,
+    serialize_cache_entry,
 )
 from dse.config import CONFIG, TOKEN_STOPWORDS, default_idf_for_doc_count
 from dse.features.fine_metrics import build_fine_metrics
@@ -77,6 +79,39 @@ SEARCH_SCHEMA_VERSION = "view_search_features.v0.3"
 def _stable_json_hash(payload):
     txt = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
     return hashlib.sha1(txt.encode("utf-8")).hexdigest()
+
+
+def _bundle_source_scope(bundle):
+    raw = (
+        bundle.search_features.source_doc_id
+        or bundle.search_features.source_doc_name
+        or bundle.state_signature.source_doc_id
+        or bundle.state_signature.source_doc_name
+        or "<no-doc>"
+    )
+    return _stable_json_hash({"source_scope": str(raw)})[:16]
+
+
+def _doc_scoped_cache_path(cache_root, bundle):
+    scope_hash = _bundle_source_scope(bundle)
+    view_id = int(bundle.search_features.view_id)
+    filename = "view_{}__doc_{}.json".format(view_id, scope_hash)
+    return os.path.join(cache_root, "view_features", filename)
+
+
+def _write_doc_scoped_cache_record(cache_root, bundle):
+    path = _doc_scoped_cache_path(cache_root, bundle)
+    entry = ViewFeatureCacheEntry(
+        view_id=int(bundle.search_features.view_id),
+        state_hash=str(bundle.state_signature.state_hash),
+        schema_version=SEARCH_SCHEMA_VERSION,
+        pipeline_version=CONFIG["pipeline_version"],
+        payload=bundle,
+    )
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(serialize_cache_entry(entry))
+    return path
 
 
 def _string_or_none(value):
@@ -614,6 +649,7 @@ def _load_all_cached_bundles(cache_root):
         return []
 
     bundles = []
+    seen = set()
     try:
         filenames = sorted(
             name for name in os.listdir(cache_dir) if name.startswith("view_") and name.endswith(".json")
@@ -632,11 +668,17 @@ def _load_all_cached_bundles(cache_root):
             continue
         if entry.pipeline_version != CONFIG["pipeline_version"]:
             continue
-        bundles.append(entry.payload)
+        payload = entry.payload
+        uniq = (_bundle_source_scope(payload), int(payload.search_features.view_id), payload.state_signature.state_hash)
+        if uniq in seen:
+            continue
+        seen.add(uniq)
+        bundles.append(payload)
     return bundles
 
 
 def index_views(views):
+    cache_root = resolve_view_cache_root(CONFIG)
     statuses = {}
     indexed = 0
     skipped = 0
@@ -645,6 +687,7 @@ def index_views(views):
             skipped += 1
             continue
         bundle = _extract_bundle_with_cache(view)
+        _write_doc_scoped_cache_record(cache_root, bundle)
         view_id = int(bundle.search_features.view_id)
         status = str(bundle.presentation_summary.debug.get("cache_status", "rebuilt"))
         statuses[view_id] = status
