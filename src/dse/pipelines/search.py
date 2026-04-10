@@ -609,7 +609,12 @@ def _build_contact_folder_for_results(query_view, query_bundle, ranked_rows):
     if not ranked_rows:
         return None
 
-    seed_preview = generate_and_cache_view_preview(query_view, CONFIG)
+    seed_preview = generate_and_cache_view_preview(
+        query_view,
+        CONFIG,
+        source_doc_id=query_bundle.search_features.source_doc_id,
+        source_doc_name=query_bundle.search_features.source_doc_name,
+    )
     seed = {
         "view_id": query_bundle.search_features.view_id,
         "display_name": query_bundle.presentation_summary.display_name,
@@ -689,7 +694,12 @@ def index_views(views):
         bundle = _extract_bundle_with_cache(view)
         _write_doc_scoped_cache_record(cache_root, bundle)
         try:
-            preview_path = generate_and_cache_view_preview(view, CONFIG)
+            preview_path = generate_and_cache_view_preview(
+                view,
+                CONFIG,
+                source_doc_id=bundle.search_features.source_doc_id,
+                source_doc_name=bundle.search_features.source_doc_name,
+            )
             if preview_path is None:
                 preview_failures += 1
         except Exception:
@@ -708,7 +718,12 @@ def index_views(views):
 
 def find_similar_views(query_view, top_n=5):
     query_bundle = _extract_bundle_with_cache(query_view)
-    generate_and_cache_view_preview(query_view, CONFIG)
+    generate_and_cache_view_preview(
+        query_view,
+        CONFIG,
+        source_doc_id=query_bundle.search_features.source_doc_id,
+        source_doc_name=query_bundle.search_features.source_doc_name,
+    )
     query_features = legacy_view_features_from_search(query_bundle.search_features)
     cache_root = resolve_view_cache_root(CONFIG)
     corpus_bundles = [
@@ -742,7 +757,12 @@ def find_similar_views(query_view, top_n=5):
         results.append(
             {
                 "candidate_view_id": candidate.view_id,
-                "preview_path": get_cached_view_preview(candidate.view_id, CONFIG),
+                "preview_path": get_cached_view_preview(
+                    candidate.view_id,
+                    CONFIG,
+                    source_doc_id=bundle.search_features.source_doc_id,
+                    source_doc_name=bundle.search_features.source_doc_name,
+                ),
                 "score_total": s_total,
                 "score_tokens": s_tokens,
                 "score_geom": s_geom,

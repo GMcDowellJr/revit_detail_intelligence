@@ -268,3 +268,35 @@ def test_load_all_cached_bundles_includes_doc_scoped_view_id_collisions(tmp_path
         ("doc-one", "s-1"),
         ("doc-two", "s-2"),
     ]
+
+
+def test_find_similar_views_looks_up_scoped_candidate_preview(monkeypatch):
+    class FakeId(object):
+        def __init__(self, value):
+            self.IntegerValue = value
+
+    class FakeView(object):
+        def __init__(self, value):
+            self.Id = FakeId(value)
+
+    query_bundle = _bundle(1, source_doc_id="doc-query", state_hash="s-query")
+    candidate_bundle = _bundle(2, source_doc_id="doc-candidate", state_hash="s-candidate")
+
+    monkeypatch.setattr(search, "_extract_bundle_with_cache", lambda _view: query_bundle)
+    monkeypatch.setattr(search, "resolve_view_cache_root", lambda _cfg: "/tmp/unused")
+    monkeypatch.setattr(search, "_load_all_cached_bundles", lambda _root: [candidate_bundle])
+
+    calls = []
+
+    def fake_cached_preview(view_id, _cfg, source_doc_id=None, source_doc_name=None):
+        calls.append((view_id, source_doc_id, source_doc_name))
+        return "candidate_preview.png"
+
+    monkeypatch.setattr(search, "get_cached_view_preview", fake_cached_preview)
+    monkeypatch.setattr(search, "generate_and_cache_view_preview", lambda *_args, **_kwargs: "query.png")
+    monkeypatch.setattr(search, "_build_contact_folder_for_results", lambda *_args, **_kwargs: None)
+
+    rows = search.find_similar_views(FakeView(1), top_n=1)
+    assert len(rows) == 1
+    assert rows[0]["preview_path"] == "candidate_preview.png"
+    assert calls == [(2, "doc-candidate", None)]
