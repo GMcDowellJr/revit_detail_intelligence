@@ -883,6 +883,7 @@ def find_similar_views(query_view, top_n=5):
         all_scored=results,
         top_results=trimmed,
         stage2_available=False,
+        min_token_threshold=min_token_threshold,
     )
     if contact is not None:
         sidecar_path = resolve_search_sidecar_path(contact["contact_folder"])
