@@ -615,7 +615,9 @@ def _load_all_cached_bundles(cache_root):
 
     bundles = []
     try:
-        filenames = sorted(name for name in os.listdir(cache_dir) if name.startswith("view_") and name.endswith(".json"))
+        filenames = sorted(
+            name for name in os.listdir(cache_dir) if name.startswith("view_") and name.endswith(".json")
+        )
     except Exception:
         return []
 

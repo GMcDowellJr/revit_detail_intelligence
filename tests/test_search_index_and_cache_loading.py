@@ -46,7 +46,7 @@ def _install_revit_stubs():
 
 _install_revit_stubs()
 
-from dse.pipelines import search
+from dse.pipelines import search  # noqa: E402
 
 
 def _bundle(view_id, cache_status="rebuilt"):
