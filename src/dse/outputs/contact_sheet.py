@@ -1,5 +1,6 @@
 import os
 import struct
+import warnings
 import zlib
 
 from dse.io_paths import ensure_dir, resolve_contact_sheets_dir, run_stamp
@@ -230,7 +231,12 @@ def _draw_preview_image(canvas, canvas_w, canvas_h, x, y, w, h, preview_path):
         return False
     try:
         src_w, src_h, src = _load_png_rgb(preview_path)
-    except Exception:
+    except Exception as exc:
+        warnings.warn(
+            "DSE: failed to load preview PNG in _draw_preview_image: {}".format(exc),
+            RuntimeWarning,
+            stacklevel=2,
+        )
         return False
 
     scale = min(float(w) / max(1, src_w), float(h) / max(1, src_h))

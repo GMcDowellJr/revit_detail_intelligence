@@ -1,5 +1,6 @@
 import json
 import os
+import warnings
 from dataclasses import dataclass, field
 from typing import Dict, Optional, Tuple
 
@@ -134,7 +135,16 @@ def get_cached_bundle_with_diagnostics(
     if payload is not None:
         return payload, "hit_memory"
 
-    disk_entry = read_cache_record(cache_root, view_id)
+    try:
+        disk_entry = read_cache_record(cache_root, view_id)
+    except RuntimeError as exc:
+        warnings.warn(
+            "DSE: failed to read cache record in get_cached_bundle_with_diagnostics: {}".format(exc),
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        invalidate_cache_record(cache_root, view_id)
+        return None, "invalidated"
     if disk_entry is None:
         return None, "miss"
 
