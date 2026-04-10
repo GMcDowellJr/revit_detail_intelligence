@@ -51,7 +51,7 @@ def _find_exported_preview_file(preview_root, view_id):
     return candidates[0]
 
 
-def get_or_create_view_preview(view, config):
+def generate_and_cache_view_preview(view, config):
     """Return cached full-resolution preview PNG path for a view."""
 
     preview_root = ensure_dir(
@@ -129,4 +129,15 @@ def get_or_create_view_preview(view, config):
     except Exception:
         return None
 
+    return None
+
+
+def get_cached_view_preview(view_id, config):
+    preview_root = ensure_dir(
+        config.get("preview_root", r"C:\temp\revit_detail_intelligence\cache\previews")
+    )
+    required_side = int(config.get("preview_longest_side", 2400))
+    out_path = _preview_file_path(preview_root, view_id)
+    if os.path.exists(out_path) and _has_required_resolution(out_path, required_side):
+        return out_path
     return None

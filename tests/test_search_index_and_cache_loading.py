@@ -77,7 +77,7 @@ def _bundle(view_id, cache_status="rebuilt", source_doc_id="doc-a", state_hash=N
 
 def test_index_views_empty_input():
     summary = search.index_views([])
-    assert summary == {"indexed": 0, "skipped": 0, "cache_statuses": {}}
+    assert summary == {"indexed": 0, "skipped": 0, "cache_statuses": {}, "preview_failures": 0}
 
 
 def test_index_views_all_invalid(monkeypatch):
@@ -86,6 +86,7 @@ def test_index_views_all_invalid(monkeypatch):
     assert summary["indexed"] == 0
     assert summary["skipped"] == 2
     assert summary["cache_statuses"] == {}
+    assert summary["preview_failures"] == 0
 
 
 def test_index_views_mixed_cache_hit_and_miss(monkeypatch):
@@ -110,6 +111,7 @@ def test_index_views_mixed_cache_hit_and_miss(monkeypatch):
     assert summary["indexed"] == 2
     assert summary["skipped"] == 1
     assert summary["cache_statuses"] == {1: "hit_disk", 2: "rebuilt"}
+    assert summary["preview_failures"] == 0
 
 
 def test_index_views_writes_doc_scoped_cache_files(monkeypatch, tmp_path):
@@ -131,9 +133,32 @@ def test_index_views_writes_doc_scoped_cache_files(monkeypatch, tmp_path):
 
     summary = search.index_views([FakeView(9)])
     assert summary["indexed"] == 1
+    assert summary["preview_failures"] == 0
     out_dir = tmp_path / "cache" / "view_features"
     files = sorted([name for name in os.listdir(str(out_dir)) if name.startswith("view_9__doc_")])
     assert len(files) == 1
+
+
+def test_index_views_counts_preview_failures(monkeypatch):
+    class FakeId(object):
+        def __init__(self, value):
+            self.IntegerValue = value
+
+    class FakeView(object):
+        def __init__(self, value):
+            self.Id = FakeId(value)
+
+    monkeypatch.setattr(search, "is_view", lambda value: hasattr(value, "Id"))
+    monkeypatch.setattr(search, "_extract_bundle_with_cache", lambda view: _bundle(view.Id.IntegerValue))
+    monkeypatch.setattr(search, "_write_doc_scoped_cache_record", lambda *_args, **_kwargs: None)
+
+    def _boom(*_args, **_kwargs):
+        raise RuntimeError("preview failed")
+
+    monkeypatch.setattr(search, "generate_and_cache_view_preview", _boom)
+    summary = search.index_views([FakeView(1), FakeView(2)])
+    assert summary["indexed"] == 2
+    assert summary["preview_failures"] == 2
 
 
 def test_load_all_cached_bundles_empty_dir(tmp_path):
