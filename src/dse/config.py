@@ -23,6 +23,11 @@ CONFIG = {
         "symbol_max": 0.25,
         "penalty_factor": 0.65,
     },
+    "feature_richness_filter": {
+        "enabled": True,
+        "min_curve_count": 3,
+        "min_non_text_tokens": 2,
+    },
     "confidence_thresholds": {"HIGH_min": 0.85, "MED_min": 0.65},
     "token_weights_by_kind": {
         "category": 1.0,

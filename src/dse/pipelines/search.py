@@ -770,25 +770,48 @@ def find_similar_views(query_view, top_n=5):
         source_doc_name=query_bundle.search_features.source_doc_name,
     )
     query_features = legacy_view_features_from_search(query_bundle.search_features)
+    seed_ok, seed_reason = check_feature_richness(
+        query_features,
+        query_bundle.search_features.view_id,
+        query_bundle.presentation_summary.display_name,
+    )
+    if not seed_ok:
+        raise ValueError(seed_reason)
     cache_root = resolve_view_cache_root(CONFIG)
 
     diag.start_timer("corpus_feature_extraction_total")
     corpus_errors = 0
     cache_statuses = {}
     corpus_bundles = []
+    corpus_feat = []
+    corpus_richness_skips = []
     for bundle in _load_all_cached_bundles(cache_root):
         if int(bundle.search_features.view_id) == int(query_features.view_id):
+            continue
+        candidate = legacy_view_features_from_search(bundle.search_features)
+        is_rich, reason = check_feature_richness(
+            candidate,
+            bundle.search_features.view_id,
+            bundle.presentation_summary.display_name,
+        )
+        if not is_rich:
+            corpus_richness_skips.append(
+                {
+                    "view_id": int(bundle.search_features.view_id),
+                    "view_name": bundle.presentation_summary.display_name,
+                    "reason": reason,
+                }
+            )
             continue
         status = str(bundle.presentation_summary.debug.get("cache_status", "hit_disk"))
         cache_statuses[status] = cache_statuses.get(status, 0) + 1
         index_accum.accumulate(bundle, status)
         corpus_bundles.append(bundle)
+        corpus_feat.append(candidate)
     diag.stop_timer("corpus_feature_extraction_total")
     diag.timings["corpus_extract_per_view_avg_ms"] = (
         diag.timings["corpus_feature_extraction_total"] / max(1, len(corpus_bundles))
     )
-
-    corpus_feat = [legacy_view_features_from_search(bundle.search_features) for bundle in corpus_bundles]
 
     diag.start_timer("idf_build")
     token_df, doc_count = build_token_df_from_features(corpus_feat)
@@ -885,6 +908,8 @@ def find_similar_views(query_view, top_n=5):
         stage2_available=False,
         min_token_threshold=min_token_threshold,
     )
+    search_payload["corpus"]["feature_richness_skipped_count"] = len(corpus_richness_skips)
+    search_payload["corpus"]["feature_richness_skips"] = corpus_richness_skips
     if contact is not None:
         sidecar_path = resolve_search_sidecar_path(contact["contact_folder"])
         write_json_sidecar(sidecar_path, search_payload)
@@ -952,6 +977,32 @@ def view_label(view):
         return view.Name
     except Exception:
         return "<unknown>"
+
+
+def check_feature_richness(features, view_id, view_name):
+    cfg = CONFIG.get("feature_richness_filter", {})
+    if not bool(cfg.get("enabled", True)):
+        return True, None
+
+    min_curve_count = int(cfg.get("min_curve_count", 3))
+    min_non_text_tokens = int(cfg.get("min_non_text_tokens", 2))
+
+    curve_count_raw = (features.fine_metrics or {}).get("curve_count")
+    if curve_count_raw is None:
+        curve_count = min_curve_count
+    else:
+        curve_count = int(float(curve_count_raw))
+    non_text_tokens = sum(
+        1 for key in (features.tokens or {}).keys() if not str(key).startswith("text_type:")
+    )
+
+    if curve_count < min_curve_count or non_text_tokens < min_non_text_tokens:
+        reason = (
+            "feature_richness_filter failed for view {} ({}) "
+            "[curve_count={} < min_curve_count={} or non_text_tokens={} < min_non_text_tokens={}]"
+        ).format(view_id, view_name, curve_count, min_curve_count, non_text_tokens, min_non_text_tokens)
+        return False, reason
+    return True, None
 
 
 def sample_view_fingerprints(views, sample_size, seed=0):
