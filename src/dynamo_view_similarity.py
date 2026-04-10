@@ -30,7 +30,8 @@ primary_input = IN[0] if len(IN) > 0 else None
 mode_input = IN[1] if len(IN) > 1 else None
 top_n = IN[2] if len(IN) > 2 and IN[2] is not None else 5
 sample_n = None
-if len(IN) > 3 and IN[3] is not None and not isinstance(IN[3], bool):
+mode_is_explicit = isinstance(mode_input, str) and mode_input.strip().lower() in ("search", "index")
+if (not mode_is_explicit) and len(IN) > 3 and IN[3] is not None and not isinstance(IN[3], bool):
     sample_n = IN[3]
 sample_seed = IN[4] if len(IN) > 4 and IN[4] is not None else 0
 run_many_to_many = bool(IN[3]) if len(IN) > 3 and isinstance(IN[3], bool) else False
@@ -40,10 +41,9 @@ query_view = coerce_view(primary_input, fallback_doc=doc)
 corpus_views = coerce_views(legacy_corpus_input, fallback_doc=doc)
 
 mode = "search"
-if isinstance(mode_input, str):
+if mode_is_explicit:
     candidate = mode_input.strip().lower()
-    if candidate in ("search", "index"):
-        mode = candidate
+    mode = candidate
 
 if sample_n is not None:
     OUT = sample_view_fingerprints(corpus_views, sample_n, seed=sample_seed)
