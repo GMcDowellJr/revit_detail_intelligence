@@ -1,5 +1,6 @@
 import json
 import os
+import warnings
 from dataclasses import dataclass, field
 from typing import Dict, Optional, Tuple
 
@@ -101,7 +102,12 @@ def read_cache_record(cache_root: str, view_id: int) -> Optional[ViewFeatureCach
     try:
         with open(path, "r", encoding="utf-8") as handle:
             return deserialize_cache_entry(handle.read())
-    except Exception:
+    except Exception as exc:
+        warnings.warn(
+            "DSE: failed to read cache record in read_cache_record: {}".format(exc),
+            RuntimeWarning,
+            stacklevel=2,
+        )
         return None
 
 

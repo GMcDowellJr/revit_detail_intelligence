@@ -3,6 +3,7 @@ import json
 import os
 import re
 import struct
+import warnings
 
 from dse.io_paths import ensure_dir
 
@@ -54,7 +55,12 @@ def _png_size(path):
         width = struct.unpack("!I", head[16:20])[0]
         height = struct.unpack("!I", head[20:24])[0]
         return (width, height)
-    except Exception:
+    except Exception as exc:
+        warnings.warn(
+            "DSE: failed to read PNG size in _png_size: {}".format(exc),
+            RuntimeWarning,
+            stacklevel=2,
+        )
         return None
 
 
@@ -77,7 +83,12 @@ def _find_exported_preview_file(preview_root, stem):
                 path = os.path.join(preview_root, name)
                 if os.path.exists(path):
                     candidates.append(path)
-    except Exception:
+    except Exception as exc:
+        warnings.warn(
+            "DSE: failed to list preview export directory in _find_exported_preview_file: {}".format(exc),
+            RuntimeWarning,
+            stacklevel=2,
+        )
         return None
     if not candidates:
         return None
@@ -142,7 +153,12 @@ def generate_and_cache_view_preview(view, config, source_doc_id=None, source_doc
         exported_default = None
         try:
             exported_default = opts.GetFileName(view.Document, view.Id)
-        except Exception:
+        except Exception as exc:
+            warnings.warn(
+                "DSE: failed to resolve exported preview filename in generate_and_cache_view_preview: {}".format(exc),
+                RuntimeWarning,
+                stacklevel=2,
+            )
             exported_default = None
 
         if exported_default and os.path.exists(exported_default):
@@ -164,7 +180,12 @@ def generate_and_cache_view_preview(view, config, source_doc_id=None, source_doc
                 except Exception:
                     return exported_fallback
             return out_path
-    except Exception:
+    except Exception as exc:
+        warnings.warn(
+            "DSE: failed to export preview in generate_and_cache_view_preview: {}".format(exc),
+            RuntimeWarning,
+            stacklevel=2,
+        )
         return None
 
     return None

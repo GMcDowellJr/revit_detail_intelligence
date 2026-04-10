@@ -17,7 +17,8 @@ def linework_density(curves, points2d):
         try:
             total_len += curve.Length
         except Exception:
-            pass
+            # Single curve failure must not abort density aggregation in this view.
+            continue
     return total_len / area_bbox
 
 

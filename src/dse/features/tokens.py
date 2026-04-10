@@ -102,6 +102,7 @@ def resolve_type_name(element, fallback="<unknown-type>"):
             if is_valid_token_value(type_name):
                 resolved_type_name = type_name
         except Exception:
+            # Revit API property access can fail for individual elements; keep fallback probing.
             pass
     if resolved_type_name is not None:
         if type_cache_key is not None:
@@ -124,6 +125,7 @@ def resolve_type_name(element, fallback="<unknown-type>"):
                     resolved_type_name = type_name
                     break
         except Exception:
+            # Revit API property access can fail for individual elements; keep fallback probing.
             pass
     if resolved_type_name is not None:
         if type_cache_key is not None:
@@ -146,6 +148,7 @@ def resolve_type_name(element, fallback="<unknown-type>"):
                 if is_valid_token_value(type_name):
                     resolved_type_name = type_name
         except Exception:
+            # Revit API type resolution can fail for individual elements; keep parameter fallback.
             pass
     if resolved_type_name is not None:
         if type_cache_key is not None:
@@ -163,6 +166,7 @@ def resolve_type_name(element, fallback="<unknown-type>"):
         if val and is_valid_token_value(val):
             resolved_type_name = val
     except Exception:
+        # Import/probe may fail outside Dynamo/Revit; keep fallback behavior for CI/unit tests.
         pass
 
     if resolved_type_name is not None:
