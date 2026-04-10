@@ -103,7 +103,12 @@ def read_cache_record(cache_root: str, view_id: int) -> Optional[ViewFeatureCach
         with open(path, "r", encoding="utf-8") as handle:
             return deserialize_cache_entry(handle.read())
     except Exception as exc:
-        raise RuntimeError("DSE: failed to read cache record in read_cache_record") from exc
+        warnings.warn(
+            "DSE: failed to read cache record in read_cache_record: {}".format(exc),
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return None
 
 
 def write_cache_record(cache_root: str, entry: ViewFeatureCacheEntry) -> str:
@@ -135,16 +140,7 @@ def get_cached_bundle_with_diagnostics(
     if payload is not None:
         return payload, "hit_memory"
 
-    try:
-        disk_entry = read_cache_record(cache_root, view_id)
-    except RuntimeError as exc:
-        warnings.warn(
-            "DSE: failed to read cache record in get_cached_bundle_with_diagnostics: {}".format(exc),
-            RuntimeWarning,
-            stacklevel=2,
-        )
-        invalidate_cache_record(cache_root, view_id)
-        return None, "invalidated"
+    disk_entry = read_cache_record(cache_root, view_id)
     if disk_entry is None:
         return None, "miss"
 
