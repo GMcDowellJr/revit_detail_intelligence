@@ -17,6 +17,33 @@ from dse.config import CONFIG, EPS  # noqa: E402
 from dse.revit_api.collect import get_view_elements  # noqa: E402
 
 
+def element_curve_cache_key(element):
+    if element is None:
+        return None
+
+    elem_id = getattr(element, "Id", None)
+    if elem_id is None:
+        return None
+
+    try:
+        id_value = int(elem_id.Value)
+    except Exception:
+        try:
+            id_value = int(elem_id.IntegerValue)
+        except Exception:
+            return None
+
+    doc = getattr(element, "Document", None)
+    if doc is None:
+        return id_value
+
+    try:
+        doc_key = doc.GetHashCode()
+    except Exception:
+        doc_key = None
+    return (doc_key, id_value)
+
+
 def collect_curves_from_geometry(geom_obj, out_curves):
     if geom_obj is None:
         return
@@ -77,7 +104,7 @@ def element_geometry_curves(element, view=None):
     return curves
 
 
-def get_2d_curves_in_view(view, only_model_intersections=False, elements=None):
+def get_2d_curves_in_view(view, only_model_intersections=False, elements=None, element_curves=None):
     curves = []
     seen_curve_ids = set()
     source = elements if elements is not None else get_view_elements(view)
@@ -97,7 +124,14 @@ def get_2d_curves_in_view(view, only_model_intersections=False, elements=None):
             continue
 
         if isinstance(elem, (FamilyInstance, FilledRegion)):
-            for curve in element_geometry_curves(elem, view=view):
+            curves_for_elem = None
+            if element_curves is not None:
+                cache_key = element_curve_cache_key(elem)
+                if cache_key is not None:
+                    curves_for_elem = element_curves.get(cache_key)
+            if curves_for_elem is None:
+                curves_for_elem = element_geometry_curves(elem, view=view)
+            for curve in curves_for_elem:
                 key = None
                 try:
                     p0 = curve.GetEndPoint(0)
@@ -181,8 +215,8 @@ def geometry_summary_for_element(element, view=None):
     }
 
 
-def element_layout_signature(element, view=None):
-    curves = element_geometry_curves(element, view=view)
+def element_layout_signature(element, view=None, curves=None):
+    curves = curves if curves is not None else element_geometry_curves(element, view=view)
     pts = endpoints_from_curves(curves)
     if not pts:
         return None
