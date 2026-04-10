@@ -13,17 +13,22 @@ def _stable_json_hash(payload):
 
 
 def _source_scope_hash(source_doc_id=None, source_doc_name=None):
-    raw = source_doc_id or source_doc_name or "<no-doc>"
-    return _stable_json_hash({"source_scope": str(raw)})[:16]
+    payload = {
+        "source_doc_id": None if source_doc_id is None else str(source_doc_id),
+        "source_doc_name": None if source_doc_name is None else str(source_doc_name),
+    }
+    if payload["source_doc_id"] is None and payload["source_doc_name"] is None:
+        payload = {"source_scope": "<no-doc>"}
+    return _stable_json_hash(payload)[:16]
 
 
 def _view_doc_provenance(view):
     doc = getattr(view, "Document", None)
     if doc is None:
         return None, None
-    source_doc_id = getattr(getattr(doc, "Application", None), "VersionBuild", None)
+    source_doc_id = getattr(doc, "PathName", None)
     if source_doc_id is None:
-        source_doc_id = getattr(doc, "PathName", None)
+        source_doc_id = getattr(getattr(doc, "Application", None), "VersionBuild", None)
     source_doc_name = getattr(doc, "Title", None)
     return source_doc_id, source_doc_name
 

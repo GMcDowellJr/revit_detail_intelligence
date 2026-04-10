@@ -82,14 +82,15 @@ def _stable_json_hash(payload):
 
 
 def _bundle_source_scope(bundle):
-    raw = (
-        bundle.search_features.source_doc_id
-        or bundle.search_features.source_doc_name
-        or bundle.state_signature.source_doc_id
-        or bundle.state_signature.source_doc_name
-        or "<no-doc>"
-    )
-    return _stable_json_hash({"source_scope": str(raw)})[:16]
+    source_doc_id = bundle.search_features.source_doc_id or bundle.state_signature.source_doc_id
+    source_doc_name = bundle.search_features.source_doc_name or bundle.state_signature.source_doc_name
+    payload = {
+        "source_doc_id": None if source_doc_id is None else str(source_doc_id),
+        "source_doc_name": None if source_doc_name is None else str(source_doc_name),
+    }
+    if payload["source_doc_id"] is None and payload["source_doc_name"] is None:
+        payload = {"source_scope": "<no-doc>"}
+    return _stable_json_hash(payload)[:16]
 
 
 def _doc_scoped_cache_path(cache_root, bundle):
@@ -123,9 +124,9 @@ def _doc_provenance(view):
     doc = getattr(view, "Document", None)
     if doc is None:
         return None, None
-    doc_id = getattr(getattr(doc, "Application", None), "VersionBuild", None)
+    doc_id = getattr(doc, "PathName", None)
     if doc_id is None:
-        doc_id = getattr(doc, "PathName", None)
+        doc_id = getattr(getattr(doc, "Application", None), "VersionBuild", None)
     doc_name = getattr(doc, "Title", None)
     return _string_or_none(doc_id), _string_or_none(doc_name)
 
