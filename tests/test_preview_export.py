@@ -1,5 +1,3 @@
-import os
-
 from dse.outputs.contact_sheet import _save_png
 from dse.revit_api.preview_export import get_cached_view_preview
 
