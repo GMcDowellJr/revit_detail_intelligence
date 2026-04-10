@@ -989,7 +989,11 @@ def check_feature_richness(features, view_id, view_name):
 
     curve_count_raw = (features.fine_metrics or {}).get("curve_count")
     if curve_count_raw is None:
-        curve_count = min_curve_count
+        pt_count = (features.fine_metrics or {}).get("pt_count")
+        if pt_count is not None:
+            curve_count = int(max(0, math.ceil(float(pt_count) / 2.0)))
+        else:
+            curve_count = 0
     else:
         curve_count = int(float(curve_count_raw))
     non_text_tokens = sum(

@@ -65,7 +65,7 @@ def _bundle(view_id, cache_status="rebuilt", source_doc_id="doc-a", state_hash=N
             tokens_stable={"type_sig:A|B": 1.0},
             tokens_context={"line_style:Thin": 1.0},
             geom_hist_knn_endpoints=[1.0, 0.0],
-            fine_metrics={"pt_count": 1.0},
+            fine_metrics={"pt_count": 1.0, "curve_count": 6.0},
         ),
         presentation_summary=ViewPresentationSummary(
             view_id=view_id,
