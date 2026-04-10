@@ -175,3 +175,29 @@ def test_contact_folder_uses_preview_cache_fallback(tmp_path):
         payload = handle.read()
     assert "seed_png_emitted" in payload
     assert "contact_png_emitted" in payload
+
+
+def test_contact_folder_emits_placeholders_when_preview_missing(tmp_path):
+    cfg = {"contacts_dir": str(tmp_path / "contacts"), "preview_root": str(tmp_path / "missing_previews")}
+    out = create_contact_folder(
+        {"view_id": 300, "display_name": "Seed Missing"},
+        [
+            {
+                "candidate_view_id": 301,
+                "candidate_display_name": "Cand Missing",
+                "rank": 1,
+                "total_score": 0.5,
+                "confidence_level": "low",
+            }
+        ],
+        cfg,
+        run_id="run_missing",
+    )
+
+    pngs = sorted([f for f in os.listdir(out["contact_folder"]) if f.lower().endswith(".png")])
+    assert len(pngs) == 2
+
+    with open(out["results_path"], "r", encoding="utf-8") as handle:
+        payload = handle.read()
+    assert '"seed_png_placeholder": true' in payload
+    assert '"contact_png_placeholder": true' in payload

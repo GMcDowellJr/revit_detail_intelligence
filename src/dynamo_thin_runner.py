@@ -5,6 +5,10 @@ Loads and executes the main similarity entrypoint from a Documents checkout:
   %USERPROFILE%\Documents\revit_detail_intelligence
 
 The runner forwards IN[x] to the loaded script and returns its OUT unchanged.
+It also normalizes legacy search-mode input shape:
+  [query_view, corpus_views, top_n]
+to the mode-based shape:
+  [query_view, "search", top_n]
 """
 
 import os
@@ -115,6 +119,30 @@ def _run_loaded_script(path, in_values):
     return scope.get("OUT")
 
 
+def _normalize_inputs(in_values):
+    values = list(in_values) if isinstance(in_values, (list, tuple)) else [in_values]
+    if not values:
+        return values
+
+    mode = values[1] if len(values) > 1 else None
+    if isinstance(mode, str) and mode.strip().lower() in ("search", "index"):
+        return values
+
+    # Preserve legacy sampling flow:
+    # IN[3] numeric sample_n and IN[4] sample_seed.
+    if len(values) > 3 and values[3] is not None and not isinstance(values[3], bool):
+        return values
+
+    normalized = [values[0], "search"]
+    if len(values) > 2:
+        normalized.append(values[2])
+    if len(values) > 3:
+        normalized.append(values[3])
+    if len(values) > 4:
+        normalized.append(values[4])
+    return normalized
+
+
 def _resolve_entrypoint():
     checked = []
     for repo_root in _candidate_roots():
@@ -134,5 +162,5 @@ if _entrypoint is None:
     }
 else:
     _clear_project_modules()
-    in_values = globals().get("IN", [])
+    in_values = _normalize_inputs(globals().get("IN", []))
     OUT = _run_loaded_script(_entrypoint, in_values)
