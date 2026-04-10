@@ -1,0 +1,210 @@
+import json
+import os
+import sys
+import types
+
+from dse.models import ViewFeatureBundle, ViewPresentationSummary, ViewSearchFeatures, ViewStateSignature
+from dse.diagnostics.sidecars import (
+    INDEX_SIDECAR_SCHEMA,
+    SEARCH_SIDECAR_SCHEMA,
+    IndexDiagnosticAccumulator,
+    SearchDiagnosticBuilder,
+    distribution_stats,
+    write_json_sidecar,
+)
+
+
+def _install_revit_stubs():
+    if "clr" not in sys.modules:
+        clr_mod = types.ModuleType("clr")
+        clr_mod.AddReference = lambda *_args, **_kwargs: None
+        sys.modules["clr"] = clr_mod
+
+    if "Autodesk.Revit.DB" in sys.modules:
+        return
+
+    autodesk_mod = types.ModuleType("Autodesk")
+    revit_mod = types.ModuleType("Autodesk.Revit")
+    db_mod = types.ModuleType("Autodesk.Revit.DB")
+
+    for name in (
+        "BuiltInParameter",
+        "CategoryType",
+        "CurveElement",
+        "DetailCurve",
+        "DetailLine",
+        "Dimension",
+        "ElementId",
+        "FamilyInstance",
+        "FilledRegion",
+        "FilteredElementCollector",
+        "TextNote",
+        "View",
+        "ViewType",
+        "GeometryInstance",
+        "Options",
+    ):
+        setattr(db_mod, name, type(name, (), {}))
+
+    sys.modules["Autodesk"] = autodesk_mod
+    sys.modules["Autodesk.Revit"] = revit_mod
+    sys.modules["Autodesk.Revit.DB"] = db_mod
+
+
+_install_revit_stubs()
+
+from dse.pipelines import search  # noqa: E402
+
+
+def _bundle(view_id, *, tokens_stable=None, tokens_context=None, geom=None, symbols=None, name=None):
+    return ViewFeatureBundle(
+        state_signature=ViewStateSignature(view_id=view_id, view_kind="DRAFTING", state_hash="s{}".format(view_id)),
+        search_features=ViewSearchFeatures(
+            view_id=view_id,
+            view_kind="DRAFTING",
+            source_doc_id="doc-{}".format(view_id),
+            tokens_stable=tokens_stable or {},
+            tokens_context=tokens_context or {},
+            geom_hist_knn_endpoints=geom or [],
+            symbol_multiset=symbols or {},
+        ),
+        presentation_summary=ViewPresentationSummary(
+            view_id=view_id,
+            display_name=name or "View {}".format(view_id),
+            debug={"cache_status": "rebuilt"},
+        ),
+    )
+
+
+def test_write_json_sidecar_is_atomic_and_valid_json(tmp_path):
+    target = tmp_path / "diag" / "search_diagnostic.json"
+    payload = {"z": 1, "a": {"b": 2}}
+
+    write_json_sidecar(str(target), payload)
+
+    with open(target, "r", encoding="utf-8") as handle:
+        saved = json.load(handle)
+    assert saved == payload
+    assert not os.path.exists("{}.tmp".format(target))
+
+
+def test_distribution_stats_non_empty_and_empty():
+    stats = distribution_stats([1.0, 2.0, 3.0, 4.0])
+    assert set(stats.keys()) == {"count", "min", "max", "mean", "p25", "p50", "p75"}
+    assert stats["count"] == 4
+    assert stats["mean"] == 2.5
+
+    empty = distribution_stats([])
+    assert empty["count"] == 0
+    assert empty["min"] is None
+    assert empty["max"] is None
+    assert empty["mean"] is None
+    assert empty["p25"] is None
+    assert empty["p50"] is None
+    assert empty["p75"] is None
+
+
+def test_index_diagnostic_accumulator_finalize_with_flags_and_stopwords():
+    accum = IndexDiagnosticAccumulator()
+    accum.accumulate(
+        _bundle(
+            1,
+            tokens_stable={},
+            tokens_context={},
+            geom=[0.0, 0.0],
+            symbols={"door": 3, "tag": 1},
+            name="Zero",
+        ),
+        "rebuilt",
+    )
+    accum.accumulate(
+        _bundle(
+            2,
+            tokens_stable={"a": 1.0},
+            tokens_context={},
+            geom=[0.0, 1.0, 0.0],
+            symbols={"door": 2},
+            name="Sparse",
+        ),
+        "hit_disk",
+    )
+
+    payload = accum.finalize(
+        token_idf={"the": 0.1, "rare": 3.0},
+        token_df={"the": 2, "rare": 1},
+        config={"diagnostics": {"stopword_idf_floor": 0.5}},
+    )
+
+    assert payload["schema_version"] == INDEX_SIDECAR_SCHEMA
+    assert payload["corpus_id"]
+    assert payload["token_health"]["stopword_candidates"] == [["the", 0.1]]
+    flagged = {row["view_id"]: row["flags"] for row in payload["flag_summary"]["flags"]}
+    assert "zero_tokens" in flagged[1]
+    assert "empty_fingerprint" in flagged[1]
+    assert payload["symbol_coverage"]["top_10_most_common_symbols"][0] == ["door", 5]
+
+
+def test_search_diagnostic_builder_builds_schema_and_tiers():
+    query = _bundle(10, tokens_stable={"t": 1.0}, geom=[1.0, 0.0])
+    query.presentation_summary.debug["cache_status"] = "hit_memory"
+
+    builder = SearchDiagnosticBuilder(run_id="run-123")
+    builder.timings["state_context_build"] = 10.0
+
+    all_scored = [
+        {"score_total": 0.9, "confidence_tier": "HIGH"},
+        {"score_total": 0.7, "confidence_tier": "MEDIUM"},
+        {"score_total": 0.2, "confidence_tier": "LOW"},
+    ]
+    top_results = [
+        {
+            "candidate_view_id": 99,
+            "score_total": 0.9,
+            "score_tokens": 0.8,
+            "score_geom": 0.9,
+            "score_fine": 0.7,
+            "confidence_tier": "HIGH",
+            "presentation_summary": {"display_name": "Candidate 99"},
+            "explanation": {"top_shared_tokens": ["a"], "top_shared_geom_bins": [1]},
+        }
+    ]
+
+    payload = builder.build(
+        query_bundle=query,
+        corpus_size=3,
+        corpus_errors=0,
+        cache_statuses={"hit_disk": 3},
+        config_snapshot={"weights": {}},
+        token_idf={"a": 1.0},
+        default_idf=0.5,
+        all_scored=all_scored,
+        top_results=top_results,
+        stage2_available=False,
+    )
+
+    assert payload["schema_version"] == SEARCH_SIDECAR_SCHEMA
+    assert payload["score_distribution"]["tier_counts"] == {"HIGH": 1, "MEDIUM": 1, "LOW": 1}
+
+
+def test_extract_bundle_with_cache_returns_tuple(monkeypatch):
+    class FakeViewId:
+        IntegerValue = 42
+
+    class FakeView:
+        Id = FakeViewId()
+
+    bundle = _bundle(42)
+
+    monkeypatch.setattr(search, "_build_state_context", lambda _view: {"state_hash": "abc"})
+    monkeypatch.setattr(search, "resolve_view_cache_root", lambda _cfg: "/tmp/cache")
+    monkeypatch.setattr(
+        search,
+        "get_cached_bundle_with_diagnostics",
+        lambda **_kwargs: (bundle, "hit_memory"),
+    )
+
+    result = search._extract_bundle_with_cache(FakeView())
+    assert isinstance(result, tuple)
+    returned_bundle, status = result
+    assert returned_bundle.search_features.view_id == 42
+    assert status == "hit_memory"

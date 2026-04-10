@@ -77,7 +77,11 @@ def _bundle(view_id, cache_status="rebuilt", source_doc_id="doc-a", state_hash=N
 
 def test_index_views_empty_input():
     summary = search.index_views([])
-    assert summary == {"indexed": 0, "skipped": 0, "cache_statuses": {}, "preview_failures": 0}
+    assert summary["indexed"] == 0
+    assert summary["skipped"] == 0
+    assert summary["cache_statuses"] == {}
+    assert summary["preview_failures"] == 0
+    assert summary["index_sidecar"]
 
 
 def test_index_views_all_invalid(monkeypatch):
@@ -103,7 +107,7 @@ def test_index_views_mixed_cache_hit_and_miss(monkeypatch):
 
     def fake_extract(view):
         status = "hit_disk" if view.Id.IntegerValue == 1 else "rebuilt"
-        return _bundle(view.Id.IntegerValue, cache_status=status)
+        return _bundle(view.Id.IntegerValue, cache_status=status), status
 
     monkeypatch.setattr(search, "_extract_bundle_with_cache", fake_extract)
     monkeypatch.setattr(search, "generate_and_cache_view_preview", lambda *_args, **_kwargs: "preview.png")
@@ -129,7 +133,7 @@ def test_index_views_writes_doc_scoped_cache_files(monkeypatch, tmp_path):
     monkeypatch.setattr(
         search,
         "_extract_bundle_with_cache",
-        lambda view: _bundle(view.Id.IntegerValue, source_doc_id="doc-x"),
+        lambda view: (_bundle(view.Id.IntegerValue, source_doc_id="doc-x"), "rebuilt"),
     )
     monkeypatch.setattr(search, "generate_and_cache_view_preview", lambda *_args, **_kwargs: "preview.png")
 
@@ -151,7 +155,7 @@ def test_index_views_counts_preview_failures(monkeypatch):
             self.Id = FakeId(value)
 
     monkeypatch.setattr(search, "is_view", lambda value: hasattr(value, "Id"))
-    monkeypatch.setattr(search, "_extract_bundle_with_cache", lambda view: _bundle(view.Id.IntegerValue))
+    monkeypatch.setattr(search, "_extract_bundle_with_cache", lambda view: (_bundle(view.Id.IntegerValue), "rebuilt"))
     monkeypatch.setattr(search, "_write_doc_scoped_cache_record", lambda *_args, **_kwargs: None)
 
     def _boom(*_args, **_kwargs):
@@ -173,7 +177,7 @@ def test_index_views_counts_preview_failures_when_generate_returns_none(monkeypa
             self.Id = FakeId(value)
 
     monkeypatch.setattr(search, "is_view", lambda value: hasattr(value, "Id"))
-    monkeypatch.setattr(search, "_extract_bundle_with_cache", lambda view: _bundle(view.Id.IntegerValue))
+    monkeypatch.setattr(search, "_extract_bundle_with_cache", lambda view: (_bundle(view.Id.IntegerValue), "rebuilt"))
     monkeypatch.setattr(search, "_write_doc_scoped_cache_record", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(search, "generate_and_cache_view_preview", lambda *_args, **_kwargs: None)
 
@@ -282,7 +286,7 @@ def test_find_similar_views_looks_up_scoped_candidate_preview(monkeypatch):
     query_bundle = _bundle(1, source_doc_id="doc-query", state_hash="s-query")
     candidate_bundle = _bundle(2, source_doc_id="doc-candidate", state_hash="s-candidate")
 
-    monkeypatch.setattr(search, "_extract_bundle_with_cache", lambda _view: query_bundle)
+    monkeypatch.setattr(search, "_extract_bundle_with_cache", lambda _view: (query_bundle, "rebuilt"))
     monkeypatch.setattr(search, "resolve_view_cache_root", lambda _cfg: "/tmp/unused")
     monkeypatch.setattr(search, "_load_all_cached_bundles", lambda _root: [candidate_bundle])
 
@@ -317,7 +321,7 @@ def test_find_similar_views_resolves_candidate_previews_after_top_n_trim(monkeyp
     candidate_low.search_features.tokens_stable = {"low": 1.0}
     candidate_high.search_features.tokens_stable = {"high": 1.0}
 
-    monkeypatch.setattr(search, "_extract_bundle_with_cache", lambda _view: query_bundle)
+    monkeypatch.setattr(search, "_extract_bundle_with_cache", lambda _view: (query_bundle, "rebuilt"))
     monkeypatch.setattr(search, "resolve_view_cache_root", lambda _cfg: "/tmp/unused")
     monkeypatch.setattr(search, "_load_all_cached_bundles", lambda _root: [candidate_low, candidate_high])
 

@@ -18,6 +18,14 @@ from dse.config import CONFIG, TOKEN_STOPWORDS, default_idf_for_doc_count
 from dse.features.fine_metrics import build_fine_metrics
 from dse.features.geom_fingerprint import bin_index, geom_fingerprint_knn, normalize_l1, robust_scale
 from dse.features.idf import build_token_df_from_features, build_token_idf
+from dse.diagnostics.sidecars import (
+    IndexDiagnosticAccumulator,
+    SearchDiagnosticBuilder,
+    build_config_snapshot,
+    resolve_index_sidecar_path,
+    resolve_search_sidecar_path,
+    write_json_sidecar,
+)
 from dse.features.tokens import (
     emit_token,
     family_type_sig,
@@ -35,6 +43,7 @@ from dse.models import (
     ViewStateSignature,
     legacy_view_features_from_search,
 )
+from dse.io_paths import run_stamp
 from dse.outputs.contact_folder import create_contact_folder
 from dse.pipelines.many_to_many import build_many_to_many_edges, write_many_to_many_outputs
 from dse.ranking.similarity import (
@@ -595,7 +604,7 @@ def _extract_bundle_with_cache(view):
     )
     if cached is not None:
         cached.presentation_summary.debug["cache_status"] = status
-        return cached
+        return cached, status
 
     fresh_bundle = extract_feature_bundle(view, state_ctx=state_ctx)
     put_bundle_in_caches(
@@ -607,11 +616,12 @@ def _extract_bundle_with_cache(view):
         schema_version=SEARCH_SCHEMA_VERSION,
         payload=fresh_bundle,
     )
-    fresh_bundle.presentation_summary.debug["cache_status"] = "rebuilt" if status == "miss" else status
-    return fresh_bundle
+    cache_status = "rebuilt" if status == "miss" else status
+    fresh_bundle.presentation_summary.debug["cache_status"] = cache_status
+    return fresh_bundle, cache_status
 
 
-def _build_contact_folder_for_results(query_view, query_bundle, ranked_rows):
+def _build_contact_folder_for_results(query_view, query_bundle, ranked_rows, run_id=None):
     if not ranked_rows:
         return None
 
@@ -650,7 +660,7 @@ def _build_contact_folder_for_results(query_view, query_bundle, ranked_rows):
             }
         )
 
-    return create_contact_folder(seed, candidates, CONFIG)
+    return create_contact_folder(seed, candidates, CONFIG, run_id=run_id)
 
 
 def _load_all_cached_bundles(cache_root):
@@ -698,11 +708,18 @@ def index_views(views):
     indexed = 0
     skipped = 0
     preview_failures = 0
+    accum = IndexDiagnosticAccumulator()
+    index_sidecar_path = resolve_index_sidecar_path(CONFIG)
     for view in views:
         if not is_view(view):
             skipped += 1
             continue
-        bundle = _extract_bundle_with_cache(view)
+        try:
+            bundle, status = _extract_bundle_with_cache(view)
+        except Exception as exc:
+            accum.accumulate_error(getattr(getattr(view, "Id", None), "IntegerValue", None), view_label(view), str(exc))
+            raise
+        accum.accumulate(bundle, status)
         _write_doc_scoped_cache_record(cache_root, bundle)
         try:
             preview_path = generate_and_cache_view_preview(
@@ -721,19 +738,29 @@ def index_views(views):
             )
             preview_failures += 1
         view_id = int(bundle.search_features.view_id)
-        status = str(bundle.presentation_summary.debug.get("cache_status", "rebuilt"))
         statuses[view_id] = status
         indexed += 1
+
+    # index_views does not build IDF; empty token_idf/token_df is expected here.
+    index_payload = accum.finalize(token_idf={}, token_df={}, config=CONFIG)
+    write_json_sidecar(index_sidecar_path, index_payload)
     return {
         "indexed": indexed,
         "skipped": skipped,
         "cache_statuses": statuses,
         "preview_failures": preview_failures,
+        "index_sidecar": index_sidecar_path,
     }
-
-
 def find_similar_views(query_view, top_n=5):
-    query_bundle = _extract_bundle_with_cache(query_view)
+    run_id = run_stamp("run")
+    diag = SearchDiagnosticBuilder(run_id=run_id)
+    index_accum = IndexDiagnosticAccumulator()
+
+    diag.start_timer("state_context_build")
+    query_bundle, query_status = _extract_bundle_with_cache(query_view)
+    diag.stop_timer("state_context_build")
+    query_bundle.presentation_summary.debug["cache_status"] = query_status
+
     generate_and_cache_view_preview(
         query_view,
         CONFIG,
@@ -742,17 +769,36 @@ def find_similar_views(query_view, top_n=5):
     )
     query_features = legacy_view_features_from_search(query_bundle.search_features)
     cache_root = resolve_view_cache_root(CONFIG)
-    corpus_bundles = [
-        bundle
-        for bundle in _load_all_cached_bundles(cache_root)
-        if int(bundle.search_features.view_id) != int(query_features.view_id)
-    ]
+
+    diag.start_timer("corpus_feature_extraction_total")
+    corpus_errors = 0
+    cache_statuses = {}
+    corpus_bundles = []
+    for bundle in _load_all_cached_bundles(cache_root):
+        if int(bundle.search_features.view_id) == int(query_features.view_id):
+            continue
+        status = str(bundle.presentation_summary.debug.get("cache_status", "hit_disk"))
+        cache_statuses[status] = cache_statuses.get(status, 0) + 1
+        index_accum.accumulate(bundle, status)
+        corpus_bundles.append(bundle)
+    diag.stop_timer("corpus_feature_extraction_total")
+    diag.timings["corpus_extract_per_view_avg_ms"] = (
+        diag.timings["corpus_feature_extraction_total"] / max(1, len(corpus_bundles))
+    )
+
     corpus_feat = [legacy_view_features_from_search(bundle.search_features) for bundle in corpus_bundles]
 
+    diag.start_timer("idf_build")
     token_df, doc_count = build_token_df_from_features(corpus_feat)
     token_idf = build_token_idf(token_df, doc_count)
     default_idf = default_idf_for_doc_count(doc_count)
+    diag.stop_timer("idf_build")
 
+    index_sidecar_path = resolve_index_sidecar_path(CONFIG)
+    index_payload = index_accum.finalize(token_idf, token_df, CONFIG)
+    write_json_sidecar(index_sidecar_path, index_payload)
+
+    diag.start_timer("pairwise_scoring_total")
     results = []
     for idx, candidate in enumerate(corpus_feat):
         bundle = corpus_bundles[idx]
@@ -784,6 +830,7 @@ def find_similar_views(query_view, top_n=5):
                 "presentation_summary": bundle.presentation_summary.__dict__,
             }
         )
+    diag.stop_timer("pairwise_scoring_total")
 
     results.sort(key=lambda r: (-r["score_total"], r["candidate_view_id"]))
     trimmed = results[: max(0, int(top_n))]
@@ -796,16 +843,37 @@ def find_similar_views(query_view, top_n=5):
             source_doc_name=row.pop("candidate_source_doc_name", None),
         )
 
-    contact = _build_contact_folder_for_results(query_view, query_bundle, trimmed)
+    diag.start_timer("contact_folder_write")
+    contact = _build_contact_folder_for_results(query_view, query_bundle, trimmed, run_id=run_id)
+    diag.stop_timer("contact_folder_write")
+
+    sidecar_path = None
+    config_snapshot = build_config_snapshot(CONFIG)
+    search_payload = diag.build(
+        query_bundle=query_bundle,
+        corpus_size=len(corpus_bundles),
+        corpus_errors=corpus_errors,
+        cache_statuses=cache_statuses,
+        config_snapshot=config_snapshot,
+        token_idf=token_idf,
+        default_idf=default_idf,
+        all_scored=results,
+        top_results=trimmed,
+        stage2_available=False,
+    )
     if contact is not None:
+        sidecar_path = resolve_search_sidecar_path(contact["contact_folder"])
+        write_json_sidecar(sidecar_path, search_payload)
         for row in trimmed:
             row["contact_folder"] = contact.get("contact_folder")
             row["contact_results_path"] = contact.get("results_path")
             row["runs_index_path"] = contact.get("runs_index")
             row["run_id"] = contact.get("run_id")
+
+    for row in trimmed:
+        row["search_sidecar"] = sidecar_path
+        row["index_sidecar"] = index_sidecar_path
     return trimmed
-
-
 def find_similar_views_many_to_many(top_k=None, skip_self=None, dedupe=None, write_output=None):
     top_k = int(top_k if top_k is not None else CONFIG.get("many_to_many", {}).get("top_k", 5))
     skip_self_mode = (
@@ -877,7 +945,7 @@ def sample_view_fingerprints(views, sample_size, seed=0):
 
     report = []
     for view in sampled:
-        bundle = _extract_bundle_with_cache(view)
+        bundle, _status = _extract_bundle_with_cache(view)
         feat = legacy_view_features_from_search(bundle.search_features)
         _, element_report, collection_summary = collect_token_data_for_view(
             view, feat.view_kind, include_element_report=True
