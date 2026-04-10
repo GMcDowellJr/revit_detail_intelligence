@@ -5,6 +5,7 @@ import re
 import shutil
 
 from dse.io_paths import ensure_dir, resolve_contacts_dir, resolve_preview_cache_dir, run_stamp
+from dse.outputs.contact_sheet import _save_png
 
 
 def _slug(txt):
@@ -19,6 +20,11 @@ def _copy_if_present(src, dst):
     ensure_dir(os.path.dirname(dst))
     shutil.copy2(src, dst)
     return True
+
+
+def _write_placeholder_png(path):
+    ensure_dir(os.path.dirname(path))
+    _save_png(path, 2, 2, bytes((224, 224, 224) * 4))
 
 
 def _latest_preview_match(root, view_id):
@@ -87,7 +93,9 @@ def create_contact_folder(seed, candidate_rows, config, run_id=None):
     seed_file = _seed_file_name(seed)
     seed_out = os.path.join(folder_path, seed_file)
     seed_src = _resolve_preview_source(config, seed.get("view_id", 0), explicit_path=seed.get("preview_path"))
-    _copy_if_present(seed_src, seed_out)
+    seed_emitted = _copy_if_present(seed_src, seed_out)
+    if not seed_emitted:
+        _write_placeholder_png(seed_out)
 
     rows_out = []
     ordered = sorted(candidate_rows, key=lambda r: (int(r.get("rank", 0)), -float(r.get("total_score", 0.0))))
@@ -99,10 +107,15 @@ def create_contact_folder(seed, candidate_rows, config, run_id=None):
             row.get("candidate_view_id", 0),
             explicit_path=row.get("preview_path"),
         )
-        _copy_if_present(cand_src, png_out)
+        copied = _copy_if_present(cand_src, png_out)
+        placeholder = False
+        if not copied:
+            _write_placeholder_png(png_out)
+            placeholder = True
         new_row = dict(row)
         new_row["contact_png"] = file_name
-        new_row["contact_png_emitted"] = bool(cand_src and os.path.exists(png_out))
+        new_row["contact_png_emitted"] = bool(os.path.exists(png_out))
+        new_row["contact_png_placeholder"] = placeholder
         rows_out.append(new_row)
 
     results_path = os.path.join(folder_path, "results.json")
@@ -113,7 +126,8 @@ def create_contact_folder(seed, candidate_rows, config, run_id=None):
                 "seed_view_id": seed.get("view_id"),
                 "seed_display_name": seed.get("display_name"),
                 "seed_png": seed_file,
-                "seed_png_emitted": bool(seed_src and os.path.exists(seed_out)),
+                "seed_png_emitted": bool(os.path.exists(seed_out)),
+                "seed_png_placeholder": bool(not seed_emitted),
                 "results": rows_out,
             },
             handle,
