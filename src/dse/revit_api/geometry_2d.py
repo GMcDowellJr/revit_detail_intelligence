@@ -57,6 +57,7 @@ def collect_curves_from_geometry(geom_obj, out_curves):
                     out_curves.append(c)
                     continue
         except Exception:
+            # Single geometry object failure must not abort per-element curve extraction.
             pass
         if hasattr(g, "GetEndPoint"):
             out_curves.append(g)
@@ -65,10 +66,12 @@ def collect_curves_from_geometry(geom_obj, out_curves):
             try:
                 collect_curves_from_geometry(g.GetInstanceGeometry(), out_curves)
             except Exception:
+                # Single geometry instance failure must not abort per-element curve extraction.
                 pass
             try:
                 collect_curves_from_geometry(g.GetSymbolGeometry(), out_curves)
             except Exception:
+                # Single geometry instance failure must not abort per-element curve extraction.
                 pass
 
 
@@ -80,6 +83,7 @@ def element_geometry_curves(element, view=None):
                 curves.append(element.GeometryCurve)
                 return curves
         except Exception:
+            # Revit may throw on invalid/deleted curve elements; continue with other extraction paths.
             pass
 
     if isinstance(element, FilledRegion):
@@ -91,6 +95,7 @@ def element_geometry_curves(element, view=None):
             if curves:
                 return curves
         except Exception:
+            # Revit may throw on invalid filled-region boundaries; continue with geometry fallback.
             pass
 
     try:
@@ -100,6 +105,7 @@ def element_geometry_curves(element, view=None):
         geom = element.get_Geometry(opts)
         collect_curves_from_geometry(geom, curves)
     except Exception:
+        # Geometry extraction is per-element best effort; failures should not abort view processing.
         pass
     return curves
 
@@ -145,6 +151,7 @@ def get_2d_curves_in_view(view, only_model_intersections=False, elements=None, e
                         round(p1.Z, 6),
                     )
                 except Exception:
+                    # Single curve endpoint failure must not abort curve collection for the view.
                     pass
                 if key is None or key not in seen_curve_ids:
                     curves.append(curve)
@@ -160,6 +167,7 @@ def endpoints_from_curves(curves):
             pts.append(curve.GetEndPoint(0))
             pts.append(curve.GetEndPoint(1))
         except Exception:
+            # Single curve endpoint failure must not abort endpoint aggregation for the view.
             continue
     return pts
 

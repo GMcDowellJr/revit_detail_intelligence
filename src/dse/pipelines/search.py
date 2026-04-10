@@ -4,6 +4,7 @@ import math
 import os
 import random
 
+import warnings
 from dse.cache.view_feature_cache import (
     GLOBAL_VIEW_FEATURE_CACHE,
     ViewFeatureCacheEntry,
@@ -175,6 +176,8 @@ def _orientation_hist(curves):
             p0 = curve.GetEndPoint(0)
             p1 = curve.GetEndPoint(1)
         except Exception:
+            # Single-curve endpoint failures are expected for invalid/deleted Revit elements.
+            # One failing element must not abort orientation histogram collection.
             continue
         dx = p1.X - p0.X
         dy = p1.Y - p0.Y
@@ -193,6 +196,8 @@ def _normalized_length_hist(curves, scale):
         try:
             length = float(curve.Length) / safe_scale
         except Exception:
+            # Single-curve length failures are expected for invalid/deleted Revit elements.
+            # One failing element must not abort length histogram collection.
             continue
         hist[bin_index(length, bins)] += 1.0
     return normalize_l1(hist)
@@ -659,15 +664,20 @@ def _load_all_cached_bundles(cache_root):
         filenames = sorted(
             name for name in os.listdir(cache_dir) if name.startswith("view_") and name.endswith(".json")
         )
-    except Exception:
-        return []
+    except Exception as exc:
+        raise RuntimeError("DSE: failed to list cached bundle files in _load_all_cached_bundles") from exc
 
     for filename in filenames:
         path = os.path.join(cache_dir, filename)
         try:
             with open(path, "r", encoding="utf-8") as handle:
                 entry = deserialize_cache_entry(handle.read())
-        except Exception:
+        except Exception as exc:
+            warnings.warn(
+                "DSE: failed to parse cached bundle in _load_all_cached_bundles: {}".format(exc),
+                RuntimeWarning,
+                stacklevel=2,
+            )
             continue
         if entry.schema_version != SEARCH_SCHEMA_VERSION:
             continue
@@ -703,7 +713,12 @@ def index_views(views):
             )
             if preview_path is None:
                 preview_failures += 1
-        except Exception:
+        except Exception as exc:
+            warnings.warn(
+                "DSE: failed to generate preview in index_views: {}".format(exc),
+                RuntimeWarning,
+                stacklevel=2,
+            )
             preview_failures += 1
         view_id = int(bundle.search_features.view_id)
         status = str(bundle.presentation_summary.debug.get("cache_status", "rebuilt"))

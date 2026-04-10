@@ -101,8 +101,8 @@ def read_cache_record(cache_root: str, view_id: int) -> Optional[ViewFeatureCach
     try:
         with open(path, "r", encoding="utf-8") as handle:
             return deserialize_cache_entry(handle.read())
-    except Exception:
-        return None
+    except Exception as exc:
+        raise RuntimeError("DSE: failed to read cache record in read_cache_record") from exc
 
 
 def write_cache_record(cache_root: str, entry: ViewFeatureCacheEntry) -> str:

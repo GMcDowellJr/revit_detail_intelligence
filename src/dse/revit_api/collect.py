@@ -21,6 +21,7 @@ try:
     clr.AddReference("RevitServices")
     from RevitServices.Persistence import DocumentManager  # noqa: E402
 except Exception:
+    # Module import must degrade gracefully in CI environments without RevitServices.
     DocumentManager = None
 
 
@@ -30,6 +31,7 @@ def current_doc():
     try:
         return DocumentManager.Instance.CurrentDBDocument
     except Exception:
+        # Revit host state can be unavailable; keep None fallback for non-Dynamo contexts.
         return None
 
 
