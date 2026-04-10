@@ -71,7 +71,7 @@ from dse.revit_api.geometry_2d import (
     get_2d_curves_in_view,
     to_view_local_2d,
 )
-from dse.revit_api.preview_export import get_or_create_view_preview
+from dse.revit_api.preview_export import generate_and_cache_view_preview, get_cached_view_preview
 
 SEARCH_SCHEMA_VERSION = "view_search_features.v0.3"
 
@@ -123,9 +123,9 @@ def _doc_provenance(view):
     doc = getattr(view, "Document", None)
     if doc is None:
         return None, None
-    doc_id = getattr(getattr(doc, "Application", None), "VersionBuild", None)
-    if doc_id is None:
-        doc_id = getattr(doc, "PathName", None)
+    doc_id = getattr(doc, "PathName", None)
+    if not doc_id:
+        doc_id = getattr(getattr(doc, "Application", None), "VersionBuild", None)
     doc_name = getattr(doc, "Title", None)
     return _string_or_none(doc_id), _string_or_none(doc_name)
 
@@ -605,11 +605,16 @@ def _extract_bundle_with_cache(view):
     return fresh_bundle
 
 
-def _build_contact_folder_for_results(query_view, query_bundle, ranked_rows, candidate_view_by_id):
+def _build_contact_folder_for_results(query_view, query_bundle, ranked_rows):
     if not ranked_rows:
         return None
 
-    seed_preview = get_or_create_view_preview(query_view, CONFIG)
+    seed_preview = generate_and_cache_view_preview(
+        query_view,
+        CONFIG,
+        source_doc_id=query_bundle.search_features.source_doc_id,
+        source_doc_name=query_bundle.search_features.source_doc_name,
+    )
     seed = {
         "view_id": query_bundle.search_features.view_id,
         "display_name": query_bundle.presentation_summary.display_name,
@@ -619,8 +624,7 @@ def _build_contact_folder_for_results(query_view, query_bundle, ranked_rows, can
     candidates = []
     for row in ranked_rows:
         cand_id = int(row.get("candidate_view_id", 0))
-        cand_view = candidate_view_by_id.get(cand_id)
-        cand_preview = get_or_create_view_preview(cand_view, CONFIG) if cand_view is not None else None
+        cand_preview = row.get("preview_path")
         ps = row.get("presentation_summary") or {}
         candidates.append(
             {
@@ -682,21 +686,44 @@ def index_views(views):
     statuses = {}
     indexed = 0
     skipped = 0
+    preview_failures = 0
     for view in views:
         if not is_view(view):
             skipped += 1
             continue
         bundle = _extract_bundle_with_cache(view)
         _write_doc_scoped_cache_record(cache_root, bundle)
+        try:
+            preview_path = generate_and_cache_view_preview(
+                view,
+                CONFIG,
+                source_doc_id=bundle.search_features.source_doc_id,
+                source_doc_name=bundle.search_features.source_doc_name,
+            )
+            if preview_path is None:
+                preview_failures += 1
+        except Exception:
+            preview_failures += 1
         view_id = int(bundle.search_features.view_id)
         status = str(bundle.presentation_summary.debug.get("cache_status", "rebuilt"))
         statuses[view_id] = status
         indexed += 1
-    return {"indexed": indexed, "skipped": skipped, "cache_statuses": statuses}
+    return {
+        "indexed": indexed,
+        "skipped": skipped,
+        "cache_statuses": statuses,
+        "preview_failures": preview_failures,
+    }
 
 
 def find_similar_views(query_view, top_n=5):
     query_bundle = _extract_bundle_with_cache(query_view)
+    generate_and_cache_view_preview(
+        query_view,
+        CONFIG,
+        source_doc_id=query_bundle.search_features.source_doc_id,
+        source_doc_name=query_bundle.search_features.source_doc_name,
+    )
     query_features = legacy_view_features_from_search(query_bundle.search_features)
     cache_root = resolve_view_cache_root(CONFIG)
     corpus_bundles = [
@@ -730,6 +757,8 @@ def find_similar_views(query_view, top_n=5):
         results.append(
             {
                 "candidate_view_id": candidate.view_id,
+                "candidate_source_doc_id": bundle.search_features.source_doc_id,
+                "candidate_source_doc_name": bundle.search_features.source_doc_name,
                 "score_total": s_total,
                 "score_tokens": s_tokens,
                 "score_geom": s_geom,
@@ -744,8 +773,14 @@ def find_similar_views(query_view, top_n=5):
     trimmed = results[: max(0, int(top_n))]
     for idx, row in enumerate(trimmed, 1):
         row["rank"] = idx
+        row["preview_path"] = get_cached_view_preview(
+            row["candidate_view_id"],
+            CONFIG,
+            source_doc_id=row.pop("candidate_source_doc_id", None),
+            source_doc_name=row.pop("candidate_source_doc_name", None),
+        )
 
-    contact = _build_contact_folder_for_results(query_view, query_bundle, trimmed, {})
+    contact = _build_contact_folder_for_results(query_view, query_bundle, trimmed)
     if contact is not None:
         for row in trimmed:
             row["contact_folder"] = contact.get("contact_folder")
