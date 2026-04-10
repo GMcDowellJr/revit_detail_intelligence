@@ -4,6 +4,7 @@ import types
 
 from dse.cache.view_feature_cache import ViewFeatureCacheEntry, serialize_cache_entry
 from dse.models import ViewFeatureBundle, ViewPresentationSummary, ViewSearchFeatures, ViewStateSignature
+from dse.config import CONFIG
 
 
 def _install_revit_stubs():
@@ -119,12 +120,32 @@ def test_load_all_cached_bundles_skips_corrupt_and_returns_valid(tmp_path):
         entry = ViewFeatureCacheEntry(
             view_id=view_id,
             state_hash="s{}".format(view_id),
-            schema_version="view_search_features.v0.3",
-            pipeline_version="v-test",
+            schema_version=search.SEARCH_SCHEMA_VERSION,
+            pipeline_version=CONFIG["pipeline_version"],
             payload=_bundle(view_id),
         )
         with open(os.path.join(view_dir, "view_{}.json".format(view_id)), "w", encoding="utf-8") as handle:
             handle.write(serialize_cache_entry(entry))
+
+    stale = ViewFeatureCacheEntry(
+        view_id=13,
+        state_hash="s13",
+        schema_version="view_search_features.v0.1",
+        pipeline_version=CONFIG["pipeline_version"],
+        payload=_bundle(13),
+    )
+    with open(os.path.join(view_dir, "view_13.json"), "w", encoding="utf-8") as handle:
+        handle.write(serialize_cache_entry(stale))
+
+    stale_pipeline = ViewFeatureCacheEntry(
+        view_id=14,
+        state_hash="s14",
+        schema_version=search.SEARCH_SCHEMA_VERSION,
+        pipeline_version="old-pipeline-version",
+        payload=_bundle(14),
+    )
+    with open(os.path.join(view_dir, "view_14.json"), "w", encoding="utf-8") as handle:
+        handle.write(serialize_cache_entry(stale_pipeline))
 
     with open(os.path.join(view_dir, "view_broken.json"), "w", encoding="utf-8") as handle:
         handle.write("{broken")

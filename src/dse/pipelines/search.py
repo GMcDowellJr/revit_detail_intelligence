@@ -626,6 +626,10 @@ def _load_all_cached_bundles(cache_root):
                 entry = deserialize_cache_entry(handle.read())
         except Exception:
             continue
+        if entry.schema_version != SEARCH_SCHEMA_VERSION:
+            continue
+        if entry.pipeline_version != CONFIG["pipeline_version"]:
+            continue
         bundles.append(entry.payload)
     return bundles
 
