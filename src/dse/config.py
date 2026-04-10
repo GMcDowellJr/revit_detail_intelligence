@@ -6,8 +6,28 @@ CONFIG = {
     "ang_bins_deg": [0, 15, 30, 45, 60, 75, 90, 105, 120, 135, 150, 165, 180],
     "tol_coord": 1.0 / 256.0,
     "weights": {"w_tokens": 0.55, "w_geom": 0.35, "w_fine": 0.10},
-    "low_semantic_weights": {"w_tokens": 0.20, "w_geom": 0.70, "w_fine": 0.10},
+    "low_semantic_weights": {
+        "w_tokens": 0.30,
+        "w_geom": 0.30,
+        "w_fine": 0.10,
+    },  # Deliberate: weights do not sum to 1.0; missing weight pulls score_total down for sparse-token pairs.
+    # NOTE (future): consider capping score_total below MED_min whenever low_semantic_weights is active.
     "min_token_threshold": 4,
+    "min_token_threshold_floor": 4,
+    "min_token_threshold_ceiling": 15,
+    "min_token_threshold_percentile": 10,
+    "geom_dominant_suppression": {
+        "enabled": True,
+        "geom_min": 0.65,
+        "tok_max": 0.25,
+        "symbol_max": 0.25,
+        "penalty_factor": 0.65,
+    },
+    "feature_richness_filter": {
+        "enabled": True,
+        "min_curve_count": 3,
+        "min_non_text_tokens": 2,
+    },
     "confidence_thresholds": {"HIGH_min": 0.85, "MED_min": 0.65},
     "token_weights_by_kind": {
         "category": 1.0,

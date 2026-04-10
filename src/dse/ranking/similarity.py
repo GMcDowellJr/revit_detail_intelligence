@@ -47,11 +47,40 @@ def fine_similarity(fa, fb):
     return 0.5 * s1 + 0.5 * s2
 
 
-def effective_weights(query_features, candidate_features):
-    min_tokens = int(CONFIG.get("min_token_threshold", 4))
+def derive_min_token_threshold(corpus_features):
+    sizes = sorted(len(feature.tokens) for feature in corpus_features)
+    floor = int(CONFIG.get("min_token_threshold_floor", CONFIG.get("min_token_threshold", 4)))
+    ceiling = int(CONFIG.get("min_token_threshold_ceiling", floor))
+    percentile = float(CONFIG.get("min_token_threshold_percentile", 10))
+    if not sizes:
+        return max(floor, min(ceiling, int(CONFIG.get("min_token_threshold", floor))))
+    idx = int((max(0.0, min(100.0, percentile)) / 100.0) * (len(sizes) - 1))
+    raw = sizes[idx]
+    return max(floor, min(ceiling, raw))
+
+
+def effective_weights(query_features, candidate_features, min_token_threshold=None):
+    min_tokens = int(
+        min_token_threshold
+        if min_token_threshold is not None
+        else CONFIG.get("min_token_threshold", 4)
+    )
     if len(query_features.tokens) < min_tokens or len(candidate_features.tokens) < min_tokens:
         return CONFIG.get("low_semantic_weights", CONFIG["weights"])
     return CONFIG["weights"]
+
+
+def apply_geom_dominant_suppression(score_total, s_tokens, s_geom, s_symbol):
+    cfg = CONFIG.get("geom_dominant_suppression", {})
+    if not bool(cfg.get("enabled", False)):
+        return score_total
+    if (
+        s_geom > float(cfg.get("geom_min", 0.65))
+        and s_tokens < float(cfg.get("tok_max", 0.25))
+        and s_symbol < float(cfg.get("symbol_max", 0.25))
+    ):
+        return score_total * float(cfg.get("penalty_factor", 0.65))
+    return score_total
 
 
 def confidence_tier(score):

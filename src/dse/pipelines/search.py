@@ -47,8 +47,10 @@ from dse.io_paths import run_stamp
 from dse.outputs.contact_folder import create_contact_folder
 from dse.pipelines.many_to_many import build_many_to_many_edges, write_many_to_many_outputs
 from dse.ranking.similarity import (
+    apply_geom_dominant_suppression,
     confidence_tier,
     cosine_similarity,
+    derive_min_token_threshold,
     effective_weights,
     explain_match,
     fine_similarity,
@@ -768,25 +770,48 @@ def find_similar_views(query_view, top_n=5):
         source_doc_name=query_bundle.search_features.source_doc_name,
     )
     query_features = legacy_view_features_from_search(query_bundle.search_features)
+    seed_ok, seed_reason = check_feature_richness(
+        query_features,
+        query_bundle.search_features.view_id,
+        query_bundle.presentation_summary.display_name,
+    )
+    if not seed_ok:
+        raise ValueError(seed_reason)
     cache_root = resolve_view_cache_root(CONFIG)
 
     diag.start_timer("corpus_feature_extraction_total")
     corpus_errors = 0
     cache_statuses = {}
     corpus_bundles = []
+    corpus_feat = []
+    corpus_richness_skips = []
     for bundle in _load_all_cached_bundles(cache_root):
         if int(bundle.search_features.view_id) == int(query_features.view_id):
+            continue
+        candidate = legacy_view_features_from_search(bundle.search_features)
+        is_rich, reason = check_feature_richness(
+            candidate,
+            bundle.search_features.view_id,
+            bundle.presentation_summary.display_name,
+        )
+        if not is_rich:
+            corpus_richness_skips.append(
+                {
+                    "view_id": int(bundle.search_features.view_id),
+                    "view_name": bundle.presentation_summary.display_name,
+                    "reason": reason,
+                }
+            )
             continue
         status = str(bundle.presentation_summary.debug.get("cache_status", "hit_disk"))
         cache_statuses[status] = cache_statuses.get(status, 0) + 1
         index_accum.accumulate(bundle, status)
         corpus_bundles.append(bundle)
+        corpus_feat.append(candidate)
     diag.stop_timer("corpus_feature_extraction_total")
     diag.timings["corpus_extract_per_view_avg_ms"] = (
         diag.timings["corpus_feature_extraction_total"] / max(1, len(corpus_bundles))
     )
-
-    corpus_feat = [legacy_view_features_from_search(bundle.search_features) for bundle in corpus_bundles]
 
     diag.start_timer("idf_build")
     token_df, doc_count = build_token_df_from_features(corpus_feat)
@@ -798,11 +823,15 @@ def find_similar_views(query_view, top_n=5):
     index_payload = index_accum.finalize(token_idf, token_df, CONFIG)
     write_json_sidecar(index_sidecar_path, index_payload)
 
+    min_token_threshold = derive_min_token_threshold(corpus_feat)
+
     diag.start_timer("pairwise_scoring_total")
     results = []
     for idx, candidate in enumerate(corpus_feat):
         bundle = corpus_bundles[idx]
-        weights = effective_weights(query_features, candidate)
+        weights = effective_weights(
+            query_features, candidate, min_token_threshold=min_token_threshold
+        )
         s_tokens = token_similarity(
             query_features.tokens,
             candidate.tokens,
@@ -810,12 +839,29 @@ def find_similar_views(query_view, top_n=5):
             default_idf=default_idf,
         )
         s_geom = cosine_similarity(query_features.geom_fingerprint, candidate.geom_fingerprint)
+        query_symbols = query_bundle.search_features.symbol_multiset
+        candidate_symbols = bundle.search_features.symbol_multiset
+        symbol_keys = set(query_symbols.keys()) | set(candidate_symbols.keys())
+        if symbol_keys:
+            symbol_inter = 0.0
+            symbol_union = 0.0
+            for key in symbol_keys:
+                qa = float(query_symbols.get(key, 0))
+                cb = float(candidate_symbols.get(key, 0))
+                symbol_inter += min(qa, cb)
+                symbol_union += max(qa, cb)
+            s_symbol = 0.0 if symbol_union <= 0.0 else symbol_inter / symbol_union
+        else:
+            s_symbol = 1.0
         s_fine = fine_similarity(query_features.fine_metrics, candidate.fine_metrics)
         s_total = (
             weights["w_tokens"] * s_tokens
             + weights["w_geom"] * s_geom
             + weights["w_fine"] * s_fine
         )
+        # s_symbol here is the stage-1 feature-layer symbol overlap score (from search_features.symbol_multiset),
+        # not stage-2 descriptor-based symbol_multiset_similarity.
+        s_total = apply_geom_dominant_suppression(s_total, s_tokens, s_geom, s_symbol)
         results.append(
             {
                 "candidate_view_id": candidate.view_id,
@@ -860,7 +906,10 @@ def find_similar_views(query_view, top_n=5):
         all_scored=results,
         top_results=trimmed,
         stage2_available=False,
+        min_token_threshold=min_token_threshold,
     )
+    search_payload["corpus"]["feature_richness_skipped_count"] = len(corpus_richness_skips)
+    search_payload["corpus"]["feature_richness_skips"] = corpus_richness_skips
     if contact is not None:
         sidecar_path = resolve_search_sidecar_path(contact["contact_folder"])
         write_json_sidecar(sidecar_path, search_payload)
@@ -928,6 +977,36 @@ def view_label(view):
         return view.Name
     except Exception:
         return "<unknown>"
+
+
+def check_feature_richness(features, view_id, view_name):
+    cfg = CONFIG.get("feature_richness_filter", {})
+    if not bool(cfg.get("enabled", True)):
+        return True, None
+
+    min_curve_count = int(cfg.get("min_curve_count", 3))
+    min_non_text_tokens = int(cfg.get("min_non_text_tokens", 2))
+
+    curve_count_raw = (features.fine_metrics or {}).get("curve_count")
+    if curve_count_raw is None:
+        pt_count = (features.fine_metrics or {}).get("pt_count")
+        if pt_count is not None:
+            curve_count = int(max(0, math.ceil(float(pt_count) / 2.0)))
+        else:
+            curve_count = 0
+    else:
+        curve_count = int(float(curve_count_raw))
+    non_text_tokens = sum(
+        1 for key in (features.tokens or {}).keys() if not str(key).startswith("text_type:")
+    )
+
+    if curve_count < min_curve_count or non_text_tokens < min_non_text_tokens:
+        reason = (
+            "feature_richness_filter failed for view {} ({}) "
+            "[curve_count={} < min_curve_count={} or non_text_tokens={} < min_non_text_tokens={}]"
+        ).format(view_id, view_name, curve_count, min_curve_count, non_text_tokens, min_non_text_tokens)
+        return False, reason
+    return True, None
 
 
 def sample_view_fingerprints(views, sample_size, seed=0):

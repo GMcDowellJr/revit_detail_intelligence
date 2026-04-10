@@ -269,10 +269,15 @@ class SearchDiagnosticBuilder:
         all_scored,
         top_results,
         stage2_available,
+        min_token_threshold=None,
     ):
         token_count = len(query_bundle.search_features.tokens_stable) + len(query_bundle.search_features.tokens_context)
-        min_token_threshold = int(CONFIG.get("min_token_threshold", 4))
-        semantic_regime = "low_semantic_fallback" if token_count < min_token_threshold else "normal"
+        effective_min_token_threshold = int(
+            min_token_threshold if min_token_threshold is not None else CONFIG.get("min_token_threshold", 4)
+        )
+        semantic_regime = (
+            "low_semantic_fallback" if token_count < effective_min_token_threshold else "normal"
+        )
         nonzero_bins = sum(1 for value in query_bundle.search_features.geom_hist_knn_endpoints if float(value) > 0.0)
         scores = [float(row.get("score_total", 0.0)) for row in all_scored]
 

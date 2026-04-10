@@ -4,7 +4,7 @@ import os
 from typing import Dict, List
 
 from dse.io_paths import ensure_dir, resolve_many_to_many_dir, run_stamp
-from dse.ranking.similarity import cosine_similarity, fine_similarity, token_similarity
+from dse.ranking.similarity import confidence_tier, cosine_similarity, fine_similarity, token_similarity
 
 
 def _layout_similarity(a: Dict[str, float], b: Dict[str, float]) -> float:
@@ -74,6 +74,7 @@ def build_many_to_many_edges(
                     "geometry_score": geom_score,
                     "layout_score": layout_score,
                     "symbol_score": symbol_score,
+                    "confidence_tier": confidence_tier(total),
                     "same_view": bool(same),
                     "source_doc_id": seed.get("source_doc_id"),
                     "source_doc_name": seed.get("source_doc_name"),
@@ -109,6 +110,8 @@ def write_many_to_many_outputs(rows, config, run_id=None):
 
     if rows:
         fieldnames = list(rows[0].keys())
+        if "confidence_tier" not in fieldnames:
+            fieldnames.append("confidence_tier")
     else:
         fieldnames = [
             "seed_view_id",
@@ -121,6 +124,7 @@ def write_many_to_many_outputs(rows, config, run_id=None):
             "geometry_score",
             "layout_score",
             "symbol_score",
+            "confidence_tier",
             "same_view",
             "source_doc_id",
             "source_doc_name",
