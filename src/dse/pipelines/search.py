@@ -47,6 +47,7 @@ from dse.io_paths import run_stamp
 from dse.outputs.contact_folder import create_contact_folder
 from dse.pipelines.many_to_many import build_many_to_many_edges, write_many_to_many_outputs
 from dse.ranking.similarity import (
+    apply_geom_dominant_suppression,
     confidence_tier,
     cosine_similarity,
     derive_min_token_threshold,
@@ -815,12 +816,29 @@ def find_similar_views(query_view, top_n=5):
             default_idf=default_idf,
         )
         s_geom = cosine_similarity(query_features.geom_fingerprint, candidate.geom_fingerprint)
+        query_symbols = query_bundle.search_features.symbol_multiset
+        candidate_symbols = bundle.search_features.symbol_multiset
+        symbol_keys = set(query_symbols.keys()) | set(candidate_symbols.keys())
+        if symbol_keys:
+            symbol_inter = 0.0
+            symbol_union = 0.0
+            for key in symbol_keys:
+                qa = float(query_symbols.get(key, 0))
+                cb = float(candidate_symbols.get(key, 0))
+                symbol_inter += min(qa, cb)
+                symbol_union += max(qa, cb)
+            s_symbol = 0.0 if symbol_union <= 0.0 else symbol_inter / symbol_union
+        else:
+            s_symbol = 1.0
         s_fine = fine_similarity(query_features.fine_metrics, candidate.fine_metrics)
         s_total = (
             weights["w_tokens"] * s_tokens
             + weights["w_geom"] * s_geom
             + weights["w_fine"] * s_fine
         )
+        # s_symbol here is the stage-1 feature-layer symbol overlap score (from search_features.symbol_multiset),
+        # not stage-2 descriptor-based symbol_multiset_similarity.
+        s_total = apply_geom_dominant_suppression(s_total, s_tokens, s_geom, s_symbol)
         results.append(
             {
                 "candidate_view_id": candidate.view_id,

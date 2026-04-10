@@ -16,6 +16,13 @@ CONFIG = {
     "min_token_threshold_floor": 4,
     "min_token_threshold_ceiling": 15,
     "min_token_threshold_percentile": 10,
+    "geom_dominant_suppression": {
+        "enabled": True,
+        "geom_min": 0.65,
+        "tok_max": 0.25,
+        "symbol_max": 0.25,
+        "penalty_factor": 0.65,
+    },
     "confidence_thresholds": {"HIGH_min": 0.85, "MED_min": 0.65},
     "token_weights_by_kind": {
         "category": 1.0,

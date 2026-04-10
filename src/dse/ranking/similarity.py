@@ -70,6 +70,19 @@ def effective_weights(query_features, candidate_features, min_token_threshold=No
     return CONFIG["weights"]
 
 
+def apply_geom_dominant_suppression(score_total, s_tokens, s_geom, s_symbol):
+    cfg = CONFIG.get("geom_dominant_suppression", {})
+    if not bool(cfg.get("enabled", False)):
+        return score_total
+    if (
+        s_geom > float(cfg.get("geom_min", 0.65))
+        and s_tokens < float(cfg.get("tok_max", 0.25))
+        and s_symbol < float(cfg.get("symbol_max", 0.25))
+    ):
+        return score_total * float(cfg.get("penalty_factor", 0.65))
+    return score_total
+
+
 def confidence_tier(score):
     if score >= CONFIG["confidence_thresholds"]["HIGH_min"]:
         return "HIGH"
