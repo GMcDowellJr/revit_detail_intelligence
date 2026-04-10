@@ -621,7 +621,7 @@ def _extract_bundle_with_cache(view):
     return fresh_bundle, cache_status
 
 
-def _build_contact_folder_for_results(query_view, query_bundle, ranked_rows):
+def _build_contact_folder_for_results(query_view, query_bundle, ranked_rows, run_id=None):
     if not ranked_rows:
         return None
 
@@ -660,7 +660,7 @@ def _build_contact_folder_for_results(query_view, query_bundle, ranked_rows):
             }
         )
 
-    return create_contact_folder(seed, candidates, CONFIG)
+    return create_contact_folder(seed, candidates, CONFIG, run_id=run_id)
 
 
 def _load_all_cached_bundles(cache_root):
@@ -844,7 +844,7 @@ def find_similar_views(query_view, top_n=5):
         )
 
     diag.start_timer("contact_folder_write")
-    contact = _build_contact_folder_for_results(query_view, query_bundle, trimmed)
+    contact = _build_contact_folder_for_results(query_view, query_bundle, trimmed, run_id=run_id)
     diag.stop_timer("contact_folder_write")
 
     sidecar_path = None
