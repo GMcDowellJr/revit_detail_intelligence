@@ -1,5 +1,9 @@
 """
-Disk-backed JSON cache for ViewFeatures.
+Disk-backed JSON cache for ViewFeatures (roadmap track).
+
+NOTE: The active v0.3 runtime path currently uses ``dse.cache.view_feature_cache``.
+This module remains on the roadmap as an alternative cache implementation and
+should not be treated as deprecated without an explicit product decision.
 
 Cache key: (view_id, element_count)
   - view_id  is stable across a Revit session.

@@ -2,9 +2,7 @@
 
 import json
 import os
-import tempfile
 
-import pytest
 
 from dse.cache.feature_cache import FeatureCache
 
