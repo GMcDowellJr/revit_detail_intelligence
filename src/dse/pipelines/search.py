@@ -1,10 +1,12 @@
 import hashlib
 import json
 import math
+import os
 import random
 
 from dse.cache.view_feature_cache import (
     GLOBAL_VIEW_FEATURE_CACHE,
+    deserialize_cache_entry,
     get_cached_bundle_with_diagnostics,
     put_bundle_in_caches,
     resolve_view_cache_root,
@@ -606,11 +608,53 @@ def _build_contact_folder_for_results(query_view, query_bundle, ranked_rows, can
     return create_contact_folder(seed, candidates, CONFIG)
 
 
-def find_similar_views(query_view, corpus_views, top_n=5):
+def _load_all_cached_bundles(cache_root):
+    cache_dir = os.path.join(cache_root, "view_features")
+    if not os.path.isdir(cache_dir):
+        return []
+
+    bundles = []
+    try:
+        filenames = sorted(name for name in os.listdir(cache_dir) if name.startswith("view_") and name.endswith(".json"))
+    except Exception:
+        return []
+
+    for filename in filenames:
+        path = os.path.join(cache_dir, filename)
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                entry = deserialize_cache_entry(handle.read())
+        except Exception:
+            continue
+        bundles.append(entry.payload)
+    return bundles
+
+
+def index_views(views):
+    statuses = {}
+    indexed = 0
+    skipped = 0
+    for view in views:
+        if not is_view(view):
+            skipped += 1
+            continue
+        bundle = _extract_bundle_with_cache(view)
+        view_id = int(bundle.search_features.view_id)
+        status = str(bundle.presentation_summary.debug.get("cache_status", "rebuilt"))
+        statuses[view_id] = status
+        indexed += 1
+    return {"indexed": indexed, "skipped": skipped, "cache_statuses": statuses}
+
+
+def find_similar_views(query_view, top_n=5):
     query_bundle = _extract_bundle_with_cache(query_view)
     query_features = legacy_view_features_from_search(query_bundle.search_features)
-    corpus_view_objs = [v for v in corpus_views if is_view(v) and v.Id != query_view.Id]
-    corpus_bundles = [_extract_bundle_with_cache(v) for v in corpus_view_objs]
+    cache_root = resolve_view_cache_root(CONFIG)
+    corpus_bundles = [
+        bundle
+        for bundle in _load_all_cached_bundles(cache_root)
+        if int(bundle.search_features.view_id) != int(query_features.view_id)
+    ]
     corpus_feat = [legacy_view_features_from_search(bundle.search_features) for bundle in corpus_bundles]
 
     token_df, doc_count = build_token_df_from_features(corpus_feat)
@@ -652,8 +696,7 @@ def find_similar_views(query_view, corpus_views, top_n=5):
     for idx, row in enumerate(trimmed, 1):
         row["rank"] = idx
 
-    candidate_view_by_id = {v.Id.IntegerValue: v for v in corpus_view_objs}
-    contact = _build_contact_folder_for_results(query_view, query_bundle, trimmed, candidate_view_by_id)
+    contact = _build_contact_folder_for_results(query_view, query_bundle, trimmed, {})
     if contact is not None:
         for row in trimmed:
             row["contact_folder"] = contact.get("contact_folder")
@@ -663,23 +706,16 @@ def find_similar_views(query_view, corpus_views, top_n=5):
     return trimmed
 
 
-def find_similar_views_many_to_many(
-    query_views,
-    corpus_views,
-    top_n=None,
-    skip_self=None,
-    symmetric_dedupe=None,
-    write_output=None,
-):
-    top_k = int(top_n if top_n is not None else CONFIG.get("many_to_many", {}).get("top_k", 5))
+def find_similar_views_many_to_many(top_k=None, skip_self=None, dedupe=None, write_output=None):
+    top_k = int(top_k if top_k is not None else CONFIG.get("many_to_many", {}).get("top_k", 5))
     skip_self_mode = (
         bool(skip_self)
         if skip_self is not None
         else bool(CONFIG.get("many_to_many", {}).get("skip_self", True))
     )
     dedupe_mode = (
-        bool(symmetric_dedupe)
-        if symmetric_dedupe is not None
+        bool(dedupe)
+        if dedupe is not None
         else bool(CONFIG.get("many_to_many", {}).get("symmetric_dedupe", False))
     )
     write_mode = (
@@ -688,34 +724,10 @@ def find_similar_views_many_to_many(
         else bool(CONFIG.get("many_to_many", {}).get("write_output", True))
     )
 
-    qviews = [v for v in query_views if is_view(v)]
-    cviews = [v for v in corpus_views if is_view(v)]
-
+    cache_root = resolve_view_cache_root(CONFIG)
+    cached_bundles = _load_all_cached_bundles(cache_root)
     rows = []
-    for view in qviews:
-        bundle = _extract_bundle_with_cache(view)
-        legacy = legacy_view_features_from_search(bundle.search_features)
-        rows.append(
-            {
-                "view_id": legacy.view_id,
-                "display_name": bundle.presentation_summary.display_name,
-                "source_doc_id": bundle.search_features.source_doc_id,
-                "source_doc_name": bundle.search_features.source_doc_name,
-                "tokens": legacy.tokens,
-                "geom_fingerprint": legacy.geom_fingerprint,
-                "fine_metrics": legacy.fine_metrics,
-                "layout_graph_features": bundle.search_features.layout_graph_features,
-                "symbol_multiset": bundle.search_features.symbol_multiset,
-            }
-        )
-
-    known = {(r.get("source_doc_id") or r.get("source_doc_name") or "", r["view_id"]) for r in rows}
-    for view in cviews:
-        v_doc_id, v_doc_name = _doc_provenance(view)
-        vkey = (v_doc_id or v_doc_name or "", view.Id.IntegerValue)
-        if vkey in known:
-            continue
-        bundle = _extract_bundle_with_cache(view)
+    for bundle in cached_bundles:
         legacy = legacy_view_features_from_search(bundle.search_features)
         rows.append(
             {

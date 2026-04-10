@@ -1,0 +1,133 @@
+import os
+import sys
+import types
+
+from dse.cache.view_feature_cache import ViewFeatureCacheEntry, serialize_cache_entry
+from dse.models import ViewFeatureBundle, ViewPresentationSummary, ViewSearchFeatures, ViewStateSignature
+
+
+def _install_revit_stubs():
+    if "clr" not in sys.modules:
+        clr_mod = types.ModuleType("clr")
+        clr_mod.AddReference = lambda *_args, **_kwargs: None
+        sys.modules["clr"] = clr_mod
+
+    if "Autodesk.Revit.DB" in sys.modules:
+        return
+
+    autodesk_mod = types.ModuleType("Autodesk")
+    revit_mod = types.ModuleType("Autodesk.Revit")
+    db_mod = types.ModuleType("Autodesk.Revit.DB")
+
+    for name in (
+        "BuiltInParameter",
+        "CategoryType",
+        "CurveElement",
+        "DetailCurve",
+        "DetailLine",
+        "Dimension",
+        "ElementId",
+        "FamilyInstance",
+        "FilledRegion",
+        "FilteredElementCollector",
+        "TextNote",
+        "View",
+        "ViewType",
+        "GeometryInstance",
+        "Options",
+    ):
+        setattr(db_mod, name, type(name, (), {}))
+
+    sys.modules["Autodesk"] = autodesk_mod
+    sys.modules["Autodesk.Revit"] = revit_mod
+    sys.modules["Autodesk.Revit.DB"] = db_mod
+
+
+_install_revit_stubs()
+
+from dse.pipelines import search
+
+
+def _bundle(view_id, cache_status="rebuilt"):
+    return ViewFeatureBundle(
+        state_signature=ViewStateSignature(view_id=view_id, view_kind="DRAFTING", state_hash="s{}".format(view_id)),
+        search_features=ViewSearchFeatures(
+            view_id=view_id,
+            view_kind="DRAFTING",
+            tokens_stable={"type_sig:A|B": 1.0},
+            tokens_context={"line_style:Thin": 1.0},
+            geom_hist_knn_endpoints=[1.0, 0.0],
+            fine_metrics={"pt_count": 1.0},
+        ),
+        presentation_summary=ViewPresentationSummary(
+            view_id=view_id,
+            display_name="V{}".format(view_id),
+            debug={"cache_status": cache_status},
+        ),
+    )
+
+
+def test_index_views_empty_input():
+    summary = search.index_views([])
+    assert summary == {"indexed": 0, "skipped": 0, "cache_statuses": {}}
+
+
+def test_index_views_all_invalid(monkeypatch):
+    monkeypatch.setattr(search, "is_view", lambda _: False)
+    summary = search.index_views([object(), object()])
+    assert summary["indexed"] == 0
+    assert summary["skipped"] == 2
+    assert summary["cache_statuses"] == {}
+
+
+def test_index_views_mixed_cache_hit_and_miss(monkeypatch):
+    class FakeId(object):
+        def __init__(self, value):
+            self.IntegerValue = value
+
+    class FakeView(object):
+        def __init__(self, value):
+            self.Id = FakeId(value)
+
+    views = [FakeView(1), FakeView(2), object()]
+    monkeypatch.setattr(search, "is_view", lambda value: hasattr(value, "Id"))
+
+    def fake_extract(view):
+        status = "hit_disk" if view.Id.IntegerValue == 1 else "rebuilt"
+        return _bundle(view.Id.IntegerValue, cache_status=status)
+
+    monkeypatch.setattr(search, "_extract_bundle_with_cache", fake_extract)
+
+    summary = search.index_views(views)
+    assert summary["indexed"] == 2
+    assert summary["skipped"] == 1
+    assert summary["cache_statuses"] == {1: "hit_disk", 2: "rebuilt"}
+
+
+def test_load_all_cached_bundles_empty_dir(tmp_path):
+    cache_root = str(tmp_path / "cache")
+    os.makedirs(os.path.join(cache_root, "view_features"), exist_ok=True)
+    assert search._load_all_cached_bundles(cache_root) == []
+
+
+def test_load_all_cached_bundles_skips_corrupt_and_returns_valid(tmp_path):
+    cache_root = str(tmp_path / "cache")
+    view_dir = os.path.join(cache_root, "view_features")
+    os.makedirs(view_dir, exist_ok=True)
+
+    for view_id in (11, 12):
+        entry = ViewFeatureCacheEntry(
+            view_id=view_id,
+            state_hash="s{}".format(view_id),
+            schema_version="view_search_features.v0.3",
+            pipeline_version="v-test",
+            payload=_bundle(view_id),
+        )
+        with open(os.path.join(view_dir, "view_{}.json".format(view_id)), "w", encoding="utf-8") as handle:
+            handle.write(serialize_cache_entry(entry))
+
+    with open(os.path.join(view_dir, "view_broken.json"), "w", encoding="utf-8") as handle:
+        handle.write("{broken")
+
+    loaded = search._load_all_cached_bundles(cache_root)
+    assert sorted(bundle.search_features.view_id for bundle in loaded) == [11, 12]
