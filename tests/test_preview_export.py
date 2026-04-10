@@ -52,3 +52,9 @@ def test_get_cached_view_preview_uses_doc_scope(tmp_path):
         get_cached_view_preview(123, cfg, source_doc_id="doc-b")
         == str(scoped_b)
     )
+
+
+def test_source_scope_hash_includes_both_id_and_name():
+    h1 = _source_scope_hash("shared-id", "doc-a")
+    h2 = _source_scope_hash("shared-id", "doc-b")
+    assert h1 != h2
