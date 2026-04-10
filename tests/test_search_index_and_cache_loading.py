@@ -106,6 +106,7 @@ def test_index_views_mixed_cache_hit_and_miss(monkeypatch):
         return _bundle(view.Id.IntegerValue, cache_status=status)
 
     monkeypatch.setattr(search, "_extract_bundle_with_cache", fake_extract)
+    monkeypatch.setattr(search, "generate_and_cache_view_preview", lambda *_args, **_kwargs: "preview.png")
 
     summary = search.index_views(views)
     assert summary["indexed"] == 2
@@ -130,6 +131,7 @@ def test_index_views_writes_doc_scoped_cache_files(monkeypatch, tmp_path):
         "_extract_bundle_with_cache",
         lambda view: _bundle(view.Id.IntegerValue, source_doc_id="doc-x"),
     )
+    monkeypatch.setattr(search, "generate_and_cache_view_preview", lambda *_args, **_kwargs: "preview.png")
 
     summary = search.index_views([FakeView(9)])
     assert summary["indexed"] == 1
@@ -156,6 +158,25 @@ def test_index_views_counts_preview_failures(monkeypatch):
         raise RuntimeError("preview failed")
 
     monkeypatch.setattr(search, "generate_and_cache_view_preview", _boom)
+    summary = search.index_views([FakeView(1), FakeView(2)])
+    assert summary["indexed"] == 2
+    assert summary["preview_failures"] == 2
+
+
+def test_index_views_counts_preview_failures_when_generate_returns_none(monkeypatch):
+    class FakeId(object):
+        def __init__(self, value):
+            self.IntegerValue = value
+
+    class FakeView(object):
+        def __init__(self, value):
+            self.Id = FakeId(value)
+
+    monkeypatch.setattr(search, "is_view", lambda value: hasattr(value, "Id"))
+    monkeypatch.setattr(search, "_extract_bundle_with_cache", lambda view: _bundle(view.Id.IntegerValue))
+    monkeypatch.setattr(search, "_write_doc_scoped_cache_record", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(search, "generate_and_cache_view_preview", lambda *_args, **_kwargs: None)
+
     summary = search.index_views([FakeView(1), FakeView(2)])
     assert summary["indexed"] == 2
     assert summary["preview_failures"] == 2

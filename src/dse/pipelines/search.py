@@ -689,7 +689,9 @@ def index_views(views):
         bundle = _extract_bundle_with_cache(view)
         _write_doc_scoped_cache_record(cache_root, bundle)
         try:
-            generate_and_cache_view_preview(view, CONFIG)
+            preview_path = generate_and_cache_view_preview(view, CONFIG)
+            if preview_path is None:
+                preview_failures += 1
         except Exception:
             preview_failures += 1
         view_id = int(bundle.search_features.view_id)
