@@ -757,12 +757,8 @@ def find_similar_views(query_view, top_n=5):
         results.append(
             {
                 "candidate_view_id": candidate.view_id,
-                "preview_path": get_cached_view_preview(
-                    candidate.view_id,
-                    CONFIG,
-                    source_doc_id=bundle.search_features.source_doc_id,
-                    source_doc_name=bundle.search_features.source_doc_name,
-                ),
+                "candidate_source_doc_id": bundle.search_features.source_doc_id,
+                "candidate_source_doc_name": bundle.search_features.source_doc_name,
                 "score_total": s_total,
                 "score_tokens": s_tokens,
                 "score_geom": s_geom,
@@ -777,6 +773,12 @@ def find_similar_views(query_view, top_n=5):
     trimmed = results[: max(0, int(top_n))]
     for idx, row in enumerate(trimmed, 1):
         row["rank"] = idx
+        row["preview_path"] = get_cached_view_preview(
+            row["candidate_view_id"],
+            CONFIG,
+            source_doc_id=row.pop("candidate_source_doc_id", None),
+            source_doc_name=row.pop("candidate_source_doc_name", None),
+        )
 
     contact = _build_contact_folder_for_results(query_view, query_bundle, trimmed)
     if contact is not None:

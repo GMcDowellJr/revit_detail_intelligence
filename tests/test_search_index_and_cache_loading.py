@@ -300,3 +300,46 @@ def test_find_similar_views_looks_up_scoped_candidate_preview(monkeypatch):
     assert len(rows) == 1
     assert rows[0]["preview_path"] == "candidate_preview.png"
     assert calls == [(2, "doc-candidate", None)]
+
+
+def test_find_similar_views_resolves_candidate_previews_after_top_n_trim(monkeypatch):
+    class FakeId(object):
+        def __init__(self, value):
+            self.IntegerValue = value
+
+    class FakeView(object):
+        def __init__(self, value):
+            self.Id = FakeId(value)
+
+    query_bundle = _bundle(1, source_doc_id="doc-query", state_hash="s-query")
+    candidate_low = _bundle(2, source_doc_id="doc-low", state_hash="s-low")
+    candidate_high = _bundle(3, source_doc_id="doc-high", state_hash="s-high")
+    candidate_low.search_features.tokens_stable = {"low": 1.0}
+    candidate_high.search_features.tokens_stable = {"high": 1.0}
+
+    monkeypatch.setattr(search, "_extract_bundle_with_cache", lambda _view: query_bundle)
+    monkeypatch.setattr(search, "resolve_view_cache_root", lambda _cfg: "/tmp/unused")
+    monkeypatch.setattr(search, "_load_all_cached_bundles", lambda _root: [candidate_low, candidate_high])
+
+    def fake_token_similarity(_qt, cand_tokens, **_kwargs):
+        return 0.9 if "high" in cand_tokens else 0.1
+
+    monkeypatch.setattr(search, "token_similarity", fake_token_similarity)
+    monkeypatch.setattr(search, "cosine_similarity", lambda *_args, **_kwargs: 0.0)
+    monkeypatch.setattr(search, "fine_similarity", lambda *_args, **_kwargs: 0.0)
+
+    calls = []
+
+    def fake_cached_preview(view_id, _cfg, source_doc_id=None, source_doc_name=None):
+        calls.append((view_id, source_doc_id, source_doc_name))
+        return "preview-{}.png".format(view_id)
+
+    monkeypatch.setattr(search, "get_cached_view_preview", fake_cached_preview)
+    monkeypatch.setattr(search, "generate_and_cache_view_preview", lambda *_args, **_kwargs: "query.png")
+    monkeypatch.setattr(search, "_build_contact_folder_for_results", lambda *_args, **_kwargs: None)
+
+    rows = search.find_similar_views(FakeView(1), top_n=1)
+    assert len(rows) == 1
+    assert rows[0]["candidate_view_id"] == 3
+    assert rows[0]["preview_path"] == "preview-3.png"
+    assert calls == [(3, "doc-high", None)]
