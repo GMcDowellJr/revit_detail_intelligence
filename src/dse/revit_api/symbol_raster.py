@@ -315,23 +315,89 @@ def _export_temp_view_png(doc, tmp_view, dpi):
     opts.SetViewsAndSheets([tmp_view.Id])
 
     doc.ExportImage(opts)
+    try:
+        tmp_listing = os.listdir(tmp_dir)
+    except Exception as exc:
+        tmp_listing = ["<listdir failed: {}>".format(exc)]
+    warnings.warn(
+        "DSE: symbol raster export tmp_dir listing after export: tmp_dir={} files={}".format(
+            tmp_dir, tmp_listing
+        ),
+        RuntimeWarning,
+        stacklevel=2,
+    )
 
     candidates = []
     try:
         resolved = opts.GetFileName(doc, tmp_view.Id)
         if resolved:
             candidates.append(resolved)
+            warnings.warn(
+                "DSE: symbol raster lookup GetFileName path={} exists={}".format(
+                    resolved, os.path.exists(resolved)
+                ),
+                RuntimeWarning,
+                stacklevel=2,
+            )
+        else:
+            warnings.warn(
+                "DSE: symbol raster lookup GetFileName returned empty value",
+                RuntimeWarning,
+                stacklevel=2,
+            )
     except Exception:
-        pass
-    candidates.append(file_stem_path + ".png")
+        warnings.warn(
+            "DSE: symbol raster lookup GetFileName raised exception",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+    stem_png = file_stem_path + ".png"
+    candidates.append(stem_png)
+    warnings.warn(
+        "DSE: symbol raster lookup stem path={} exists={}".format(stem_png, os.path.exists(stem_png)),
+        RuntimeWarning,
+        stacklevel=2,
+    )
 
     for name in os.listdir(tmp_dir):
         if name.lower().endswith(".png"):
-            candidates.append(os.path.join(tmp_dir, name))
+            listed = os.path.join(tmp_dir, name)
+            candidates.append(listed)
+            warnings.warn(
+                "DSE: symbol raster lookup listdir path={} exists={}".format(
+                    listed, os.path.exists(listed)
+                ),
+                RuntimeWarning,
+                stacklevel=2,
+            )
 
     for cand in candidates:
         if cand and os.path.exists(cand):
+            try:
+                size_bytes = os.path.getsize(cand)
+            except Exception:
+                size_bytes = -1
+            try:
+                with open(cand, "rb") as handle:
+                    head = handle.read(8)
+                head_hex = " ".join("{:02X}".format(b) for b in head)
+            except Exception as exc:
+                head_hex = "<read failed: {}>".format(exc)
+            warnings.warn(
+                "DSE: symbol raster resolved export path={} size_bytes={} head8_hex={}".format(
+                    cand, size_bytes, head_hex
+                ),
+                RuntimeWarning,
+                stacklevel=2,
+            )
             return cand
+    warnings.warn(
+        "DSE: export file not found in tmp_dir={}, view_id={}, stem={}".format(
+            tmp_dir, int(tmp_view.Id.IntegerValue), stem
+        ),
+        RuntimeWarning,
+        stacklevel=2,
+    )
     return None
 
 
