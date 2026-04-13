@@ -341,7 +341,10 @@ def _export_temp_view_png(doc, tmp_view, dpi):
     dpi_enum = _dpi_enum_for_value(dpi)
     if dpi_enum is not None and hasattr(opts, "ImageResolution"):
         opts.ImageResolution = dpi_enum
-    opts.SetViewsAndSheets([tmp_view.Id])
+    if hasattr(opts, "SetViewsAndSheets"):
+        opts.SetViewsAndSheets([tmp_view.Id])
+    elif hasattr(opts, "ViewName"):
+        opts.ViewName = tmp_view.Name
 
     doc.ExportImage(opts)
     tmp_listing = os.listdir(tmp_dir)
@@ -477,17 +480,6 @@ def _duplicate_and_isolate_view(doc, view, element):
         except Exception:
             try:
                 tx_dup.RollBack()
-            except Exception:
-                pass
-            raise
-
-        tx_iso = _start_transaction(doc, "DSE: isolate element for symbol raster")
-        try:
-            tmp_view.IsolateElementTemporary(element.Id)
-            tx_iso.Commit()
-        except Exception:
-            try:
-                tx_iso.RollBack()
             except Exception:
                 pass
             raise
