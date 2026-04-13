@@ -320,10 +320,7 @@ def _export_temp_view_png(doc, tmp_view, dpi):
     opts.SetViewsAndSheets([tmp_view.Id])
 
     doc.ExportImage(opts)
-    try:
-        tmp_listing = os.listdir(tmp_dir)
-    except Exception as exc:
-        tmp_listing = ["<listdir failed: {}>".format(exc)]
+    tmp_listing = os.listdir(tmp_dir)
     warnings.warn(
         "DSE: symbol raster export tmp_dir listing after export: tmp_dir={} files={}".format(
             tmp_dir, tmp_listing
@@ -378,16 +375,10 @@ def _export_temp_view_png(doc, tmp_view, dpi):
 
     for cand in candidates:
         if cand and os.path.exists(cand):
-            try:
-                size_bytes = os.path.getsize(cand)
-            except Exception:
-                size_bytes = -1
-            try:
-                with open(cand, "rb") as handle:
-                    head = handle.read(8)
-                head_hex = " ".join("{:02X}".format(b) for b in head)
-            except Exception as exc:
-                head_hex = "<read failed: {}>".format(exc)
+            size_bytes = os.path.getsize(cand)
+            with open(cand, "rb") as handle:
+                head = handle.read(8)
+            head_hex = " ".join("{:02X}".format(b) for b in head)
             warnings.warn(
                 "DSE: symbol raster resolved export path={} size_bytes={} head8_hex={}".format(
                     cand, size_bytes, head_hex
@@ -397,7 +388,7 @@ def _export_temp_view_png(doc, tmp_view, dpi):
             )
             return cand, tmp_dir
     warnings.warn(
-        "DSE: export file not found in tmp_dir={}, view_id={}, stem={}".format(
+        "DSE symbol raster: export file not found tmp_dir={}, view_id={}, stem={}".format(
             tmp_dir, int(tmp_view.Id.IntegerValue), stem
         ),
         RuntimeWarning,
