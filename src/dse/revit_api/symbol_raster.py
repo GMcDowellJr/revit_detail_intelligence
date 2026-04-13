@@ -466,7 +466,7 @@ def _duplicate_and_isolate_view(doc, view, element):
         import clr
 
         clr.AddReference("RevitAPI")
-        from Autodesk.Revit.DB import ViewDuplicateOption
+        from Autodesk.Revit.DB import BoundingBoxXYZ, ViewDuplicateOption, XYZ
 
         tx_dup = _start_transaction(doc, "DSE: duplicate view for symbol raster")
         try:
@@ -491,6 +491,31 @@ def _duplicate_and_isolate_view(doc, view, element):
             except Exception:
                 pass
             raise
+
+        bb = element.get_BoundingBox(tmp_view)
+        if bb is None:
+            bb = element.get_BoundingBox(None)
+        if bb is not None:
+            tx_crop = _start_transaction(doc, "DSE: set crop for symbol raster")
+            try:
+                width = float(bb.Max.X - bb.Min.X)
+                height = float(bb.Max.Y - bb.Min.Y)
+                pad = max(width, height) * 0.25
+                pad = max(pad, 0.1)
+                expanded_bbox = BoundingBoxXYZ()
+                expanded_bbox.Min = XYZ(bb.Min.X - pad, bb.Min.Y - pad, bb.Min.Z - pad)
+                expanded_bbox.Max = XYZ(bb.Max.X + pad, bb.Max.Y + pad, bb.Max.Z + pad)
+                tmp_view.CropBoxActive = True
+                tmp_view.CropBoxVisible = False
+                tmp_view.CropBox = expanded_bbox
+                doc.Regenerate()
+                tx_crop.Commit()
+            except Exception:
+                try:
+                    tx_crop.RollBack()
+                except Exception:
+                    pass
+                raise
 
         return tmp_view
     except Exception:
