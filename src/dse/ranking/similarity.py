@@ -42,9 +42,17 @@ def gaussian_sim(x, y, sigma=0.5):
 def fine_similarity(fa, fb):
     if not fa or not fb:
         return 0.5
-    s1 = gaussian_sim(fa.get("bbox_aspect", 1.0), fb.get("bbox_aspect", 1.0), sigma=0.5)
-    s2 = gaussian_sim(fa.get("linework_density", 0.0), fb.get("linework_density", 0.0), sigma=0.5)
-    return 0.5 * s1 + 0.5 * s2
+    s1 = gaussian_sim(fa.get("bbox_aspect", 1.0), fb.get("bbox_aspect", 1.0), sigma=0.3)
+    # linework_density replaced: value is scale-dependent (proportional to
+    # robust_scale used during geometry normalization) and geometry-incomplete
+    # for detail-component-heavy views pre-raster. orientation_entropy is
+    # scale-agnostic and computed from actual curve orientations.
+    s_entropy = gaussian_sim(
+        fa.get("orientation_entropy", 1.5),
+        fb.get("orientation_entropy", 1.5),
+        sigma=0.5,
+    )
+    return 0.5 * s1 + 0.5 * s_entropy
 
 
 def derive_min_token_threshold(corpus_features):
