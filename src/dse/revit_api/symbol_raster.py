@@ -264,7 +264,7 @@ def _export_temp_view_png(doc, tmp_view, dpi):
         clr.AddReference("RevitAPI")
         from Autodesk.Revit.DB import ExportRange, ImageExportOptions, ImageFileType
     except Exception as exc:
-        raise RuntimeError("RevitAPI import unavailable: {}".format(exc))
+        raise RuntimeError("RevitAPI import unavailable: {}".format(exc)) from exc
 
     tmp_dir = tempfile.mkdtemp(prefix="dse_symbol_raster_")
     stem = "sym_{}_{}".format(int(tmp_view.Id.IntegerValue), os.getpid())
