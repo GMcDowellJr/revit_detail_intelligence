@@ -491,18 +491,23 @@ def _duplicate_and_isolate_view(doc, view, element):
         if bb is None:
             bb = element.get_BoundingBox(None)
 
+        target_id_int = _safe_int_element_id(element)
         other_ids = List[ElementId]()
         collector = FilteredElementCollector(doc, view.Id).WhereElementIsNotElementType()
         for candidate in collector:
             candidate_id = getattr(candidate, "Id", None)
             if candidate_id is None:
                 continue
+            candidate_id_int = None
             try:
-                if int(candidate_id.IntegerValue) == int(element.Id.IntegerValue):
-                    continue
+                candidate_id_int = int(candidate_id.Value)
             except Exception:
-                if candidate_id == element.Id:
-                    continue
+                try:
+                    candidate_id_int = int(candidate_id.IntegerValue)
+                except Exception:
+                    candidate_id_int = None
+            if target_id_int is not None and candidate_id_int == target_id_int:
+                continue
             other_ids.Add(candidate_id)
 
         tx_dup = _start_transaction(doc, "DSE: duplicate view for symbol raster")
