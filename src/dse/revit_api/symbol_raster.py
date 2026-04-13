@@ -390,7 +390,7 @@ def _export_temp_view_png(doc, tmp_view, dpi):
                 RuntimeWarning,
                 stacklevel=2,
             )
-            return cand
+            return cand, tmp_dir
     warnings.warn(
         "DSE: export file not found in tmp_dir={}, view_id={}, stem={}".format(
             tmp_dir, int(tmp_view.Id.IntegerValue), stem
@@ -398,7 +398,18 @@ def _export_temp_view_png(doc, tmp_view, dpi):
         RuntimeWarning,
         stacklevel=2,
     )
-    return None
+    return None, tmp_dir
+
+
+def _cleanup_export_tmp_dir(tmp_dir):
+    if not tmp_dir:
+        return
+    try:
+        import shutil
+
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+    except Exception:
+        pass
 
 
 def _start_transaction(doc, name):
@@ -536,56 +547,63 @@ def _collect_points_for_element(view, doc, element, config):
 
     tmp_view = None
     png_path = None
+    export_tmp_dir = None
     try:
         tmp_view = _duplicate_and_isolate_view(doc, view, element)
         if tmp_view is None:
             raise RuntimeError("failed to duplicate/isolate temporary view")
         dpi = int(config.get("symbol_raster_dpi", 150))
-        png_path = _export_temp_view_png(doc, tmp_view, dpi)
+        png_path, export_tmp_dir = _export_temp_view_png(doc, tmp_view, dpi)
     except Exception as exc:
         warnings.warn(
             "DSE: symbol raster export failure for element {} ({}) : {}".format(elem_id, family_name, exc),
             RuntimeWarning,
             stacklevel=2,
         )
+        _cleanup_export_tmp_dir(export_tmp_dir)
         return None, None
     finally:
         _delete_temp_view(doc, tmp_view)
 
-    points_xy_rel = []
-    if png_path and os.path.exists(png_path):
-        try:
-            img_width, img_height, lum = _png_to_luminance(png_path)
-            edges = _edge_pixels(img_width, img_height, lum)
-            for col, row in edges:
-                x_rel = ((float(col) / float(max(1, img_width))) - 0.5) * obb_width
-                y_rel = ((float(row) / float(max(1, img_height))) - 0.5) * obb_height
-                points_xy_rel.append([x_rel, y_rel])
-        except Exception as exc:
-            warnings.warn(
-                "DSE: symbol raster decode failure for element {} ({}) : {}".format(elem_id, family_name, exc),
-                RuntimeWarning,
-                stacklevel=2,
-            )
-            return None, None
+    try:
+        points_xy_rel = []
+        if png_path and os.path.exists(png_path):
+            try:
+                img_width, img_height, lum = _png_to_luminance(png_path)
+                edges = _edge_pixels(img_width, img_height, lum)
+                for col, row in edges:
+                    x_rel = ((float(col) / float(max(1, img_width))) - 0.5) * obb_width
+                    y_rel = ((float(row) / float(max(1, img_height))) - 0.5) * obb_height
+                    points_xy_rel.append([x_rel, y_rel])
+            except Exception as exc:
+                warnings.warn(
+                    "DSE: symbol raster decode failure for element {} ({}) : {}".format(
+                        elem_id, family_name, exc
+                    ),
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+                return None, None
 
-    points_xy_rel = _subsample_points(points_xy_rel, int(config.get("symbol_raster_max_points", 200)))
-    points_xy = _translate_points(points_xy_rel, placement_point)
+        points_xy_rel = _subsample_points(points_xy_rel, int(config.get("symbol_raster_max_points", 200)))
+        points_xy = _translate_points(points_xy_rel, placement_point)
 
-    entry = {
-        "cache_schema": "symbol_raster.v1",
-        "cache_key": cache_key,
-        "family_name": family_name,
-        "view_scale": view_scale,
-        "orientation_bucket": orientation_bucket,
-        "doc_scope": doc_scope,
-        "obb_width": obb_width,
-        "obb_height": obb_height,
-        "points": points_xy_rel,
-        "build_time_utc": datetime.now(timezone.utc).isoformat(),
-    }
-    _write_cache_entry(cache_path, entry)
-    return elem_id, points_xy
+        entry = {
+            "cache_schema": "symbol_raster.v1",
+            "cache_key": cache_key,
+            "family_name": family_name,
+            "view_scale": view_scale,
+            "orientation_bucket": orientation_bucket,
+            "doc_scope": doc_scope,
+            "obb_width": obb_width,
+            "obb_height": obb_height,
+            "points": points_xy_rel,
+            "build_time_utc": datetime.now(timezone.utc).isoformat(),
+        }
+        _write_cache_entry(cache_path, entry)
+        return elem_id, points_xy
+    finally:
+        _cleanup_export_tmp_dir(export_tmp_dir)
 
 
 def collect_raster_points_for_view(view, doc=None, config=None):

@@ -295,8 +295,9 @@ def _build_state_context(view):
     pts2 = to_view_local_2d(pts, view)
     raster_points = [(float(p[0]), float(p[1])) for p in raster_points]
     raster_points = list(dict.fromkeys(raster_points))
+    points_for_scale = pts2 + raster_points
 
-    scale = robust_scale(pts2, CONFIG["kNN_k"])
+    scale = robust_scale(points_for_scale, CONFIG["kNN_k"])
     ptsn_curve = [(p[0] / scale, p[1] / scale) for p in pts2] if pts2 else []
     ptsn_raster = [(p[0] / scale, p[1] / scale) for p in raster_points] if raster_points else []
     ptsn = ptsn_curve + ptsn_raster
