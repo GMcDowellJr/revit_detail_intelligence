@@ -58,13 +58,33 @@ def _orientation_bucket_from_transform(transform):
     return "r{}{}".format(bucket, "m" if is_mirrored else "")
 
 
+def _document_identity(doc):
+    if doc is None:
+        return "<no-doc>"
+    path_name = str(getattr(doc, "PathName", "") or "").strip()
+    if path_name:
+        return path_name
+    title = str(getattr(doc, "Title", "") or "").strip()
+    if title:
+        return title
+    build = str(getattr(getattr(doc, "Application", None), "VersionBuild", "") or "").strip()
+    if build:
+        return build
+    try:
+        return "doc_hash:{}".format(int(doc.GetHashCode()))
+    except Exception:
+        return "<no-doc>"
+
+
 def _symbol_cache_key(element, view):
     family_name, type_name = _safe_type_sig_parts(element)
     view_scale = int(round(float(getattr(view, "Scale", 1))))
     transform = element.GetTotalTransform()
     orientation_bucket = _orientation_bucket_from_transform(transform)
-    key = "{}|{}|{}|{}".format(family_name, type_name, view_scale, orientation_bucket)
-    return key, family_name, type_name, view_scale, orientation_bucket
+    doc_identity = _document_identity(getattr(view, "Document", None))
+    doc_scope = hashlib.sha1(doc_identity.encode("utf-8")).hexdigest()[:12]
+    key = "{}|{}|{}|{}|{}".format(doc_scope, family_name, type_name, view_scale, orientation_bucket)
+    return key, family_name, type_name, view_scale, orientation_bucket, doc_scope
 
 
 def _cache_file_path(config, family_name, cache_key):
@@ -397,7 +417,9 @@ def _collect_points_for_element(view, doc, element, config):
     elem_id = _safe_int_element_id(element)
     family_name, _ = _safe_type_sig_parts(element)
     try:
-        cache_key, family_name, _type_name, view_scale, orientation_bucket = _symbol_cache_key(element, view)
+        cache_key, family_name, _type_name, view_scale, orientation_bucket, doc_scope = _symbol_cache_key(
+            element, view
+        )
     except Exception as exc:
         warnings.warn(
             "DSE: symbol raster key failure for element {} ({}) : {}".format(elem_id, family_name, exc),
@@ -437,6 +459,7 @@ def _collect_points_for_element(view, doc, element, config):
             "family_name": family_name,
             "view_scale": view_scale,
             "orientation_bucket": orientation_bucket,
+            "doc_scope": doc_scope,
             "obb_width": obb_width,
             "obb_height": obb_height,
             "points": [],
@@ -489,6 +512,7 @@ def _collect_points_for_element(view, doc, element, config):
         "family_name": family_name,
         "view_scale": view_scale,
         "orientation_bucket": orientation_bucket,
+        "doc_scope": doc_scope,
         "obb_width": obb_width,
         "obb_height": obb_height,
         "points": points_xy_rel,
