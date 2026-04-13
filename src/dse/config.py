@@ -45,6 +45,8 @@ CONFIG = {
     "many_to_many_output_dir": r"C:\temp\revit_detail_intelligence\output\many_to_many",
     "preview_root": r"C:\temp\revit_detail_intelligence\cache\previews",
     "preview_longest_side": 2400,
+    "symbol_raster_dpi": 150,
+    "symbol_raster_max_points": 200,
     "contact_sheet": {
         "enabled": False,
         "top_n_candidates": 9,
