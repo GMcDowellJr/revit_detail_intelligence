@@ -14,6 +14,30 @@ from dse.io_paths import ensure_dir
 from dse.revit_api.collect import get_view_elements, is_family_instance
 from dse.revit_api.geometry_2d import to_view_local_2d
 
+_DIAG_JSON_PATH = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "..", "symbol_raster_diagnostics.json")
+)
+
+
+def _write_diag_json(event, payload):
+    row = {
+        "event": str(event),
+        "ts_utc": datetime.now(timezone.utc).isoformat(),
+        "payload": payload,
+    }
+    try:
+        existing = []
+        if os.path.exists(_DIAG_JSON_PATH):
+            with open(_DIAG_JSON_PATH, "r", encoding="utf-8") as handle:
+                existing = json.load(handle)
+            if not isinstance(existing, list):
+                existing = []
+        existing.append(row)
+        with open(_DIAG_JSON_PATH, "w", encoding="utf-8") as handle:
+            json.dump(existing, handle, indent=2, ensure_ascii=True)
+    except Exception:
+        pass
+
 
 def _safe_int_element_id(element):
     elem_id = getattr(element, "Id", None)
@@ -328,6 +352,7 @@ def _export_temp_view_png(doc, tmp_view, dpi):
         RuntimeWarning,
         stacklevel=2,
     )
+    _write_diag_json("post_export_tmp_dir_listing", {"tmp_dir": tmp_dir, "files": tmp_listing})
 
     candidates = []
     try:
@@ -341,18 +366,24 @@ def _export_temp_view_png(doc, tmp_view, dpi):
                 RuntimeWarning,
                 stacklevel=2,
             )
+            _write_diag_json(
+                "lookup_getfilename",
+                {"path": resolved, "exists": bool(os.path.exists(resolved)), "tmp_dir": tmp_dir},
+            )
         else:
             warnings.warn(
                 "DSE: symbol raster lookup GetFileName returned empty value",
                 RuntimeWarning,
                 stacklevel=2,
             )
+            _write_diag_json("lookup_getfilename_empty", {"tmp_dir": tmp_dir})
     except Exception:
         warnings.warn(
             "DSE: symbol raster lookup GetFileName raised exception",
             RuntimeWarning,
             stacklevel=2,
         )
+        _write_diag_json("lookup_getfilename_exception", {"tmp_dir": tmp_dir})
     stem_png = file_stem_path + ".png"
     candidates.append(stem_png)
     warnings.warn(
@@ -360,6 +391,7 @@ def _export_temp_view_png(doc, tmp_view, dpi):
         RuntimeWarning,
         stacklevel=2,
     )
+    _write_diag_json("lookup_stem_png", {"path": stem_png, "exists": bool(os.path.exists(stem_png))})
 
     for name in os.listdir(tmp_dir):
         if name.lower().endswith(".png"):
@@ -372,6 +404,7 @@ def _export_temp_view_png(doc, tmp_view, dpi):
                 RuntimeWarning,
                 stacklevel=2,
             )
+            _write_diag_json("lookup_listdir_png", {"path": listed, "exists": bool(os.path.exists(listed))})
 
     for cand in candidates:
         if cand and os.path.exists(cand):
@@ -386,6 +419,10 @@ def _export_temp_view_png(doc, tmp_view, dpi):
                 RuntimeWarning,
                 stacklevel=2,
             )
+            _write_diag_json(
+                "resolved_export_png",
+                {"path": cand, "size_bytes": int(size_bytes), "head8_hex": head_hex, "tmp_dir": tmp_dir},
+            )
             return cand, tmp_dir
     warnings.warn(
         "DSE symbol raster: export file not found tmp_dir={}, view_id={}, stem={}".format(
@@ -393,6 +430,10 @@ def _export_temp_view_png(doc, tmp_view, dpi):
         ),
         RuntimeWarning,
         stacklevel=2,
+    )
+    _write_diag_json(
+        "export_file_not_found",
+        {"tmp_dir": tmp_dir, "view_id": int(tmp_view.Id.IntegerValue), "stem": stem},
     )
     return None, tmp_dir
 
