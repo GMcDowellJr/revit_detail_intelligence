@@ -501,16 +501,31 @@ def _duplicate_and_isolate_view(doc, view, element, element_bbox):
 
         tx_hide = _start_transaction(doc, "DSE: hide other elements for symbol raster")
         try:
-            visible_elements = FilteredElementCollector(doc, tmp_view.Id).WhereElementIsNotElementType()
+            visible_ids = FilteredElementCollector(doc, tmp_view.Id).ToElementIds()
             other_ids = List[ElementId]()
-            for candidate in visible_elements:
-                if candidate.Id == element.Id:
+            for candidate_id in visible_ids:
+                if candidate_id == element.Id:
                     continue
-                if not candidate.CanBeHidden(tmp_view):
+                candidate = doc.GetElement(candidate_id)
+                if candidate is None:
                     continue
-                other_ids.Add(candidate.Id)
+                try:
+                    if not candidate.CanBeHidden(tmp_view):
+                        continue
+                except Exception:
+                    continue
+                other_ids.Add(candidate_id)
             if other_ids.Count > 0:
-                tmp_view.HideElements(other_ids)
+                try:
+                    tmp_view.HideElements(other_ids)
+                except Exception:
+                    for candidate_id in other_ids:
+                        try:
+                            single_id = List[ElementId]()
+                            single_id.Add(candidate_id)
+                            tmp_view.HideElements(single_id)
+                        except Exception:
+                            pass
             tx_hide.Commit()
         except Exception:
             try:
