@@ -110,8 +110,15 @@ def element_geometry_curves(element, view=None):
     return curves
 
 
-def get_2d_curves_in_view(view, only_model_intersections=False, elements=None, element_curves=None):
+def get_2d_curves_in_view(
+    view,
+    only_model_intersections=False,
+    elements=None,
+    element_curves=None,
+    symbol_raster_points=None,
+):
     curves = []
+    raster_points = []
     seen_curve_ids = set()
     source = elements if elements is not None else get_view_elements(view)
     for elem in source:
@@ -130,6 +137,24 @@ def get_2d_curves_in_view(view, only_model_intersections=False, elements=None, e
             continue
 
         if isinstance(elem, (FamilyInstance, FilledRegion)):
+            if isinstance(elem, FamilyInstance) and symbol_raster_points is not None:
+                elem_id_int = None
+                try:
+                    elem_id_int = int(elem.Id.Value)
+                except Exception:
+                    try:
+                        elem_id_int = int(elem.Id.IntegerValue)
+                    except Exception:
+                        elem_id_int = None
+                if elem_id_int is not None and elem_id_int in symbol_raster_points:
+                    for xy in symbol_raster_points.get(elem_id_int) or []:
+                        try:
+                            raster_points.append((float(xy[0]), float(xy[1])))
+                        except Exception:
+                            # Invalid raster point rows are ignored per-element.
+                            continue
+                    # Raster replaces geometry-curve extraction for this FamilyInstance.
+                    continue
             curves_for_elem = None
             if element_curves is not None:
                 cache_key = element_curve_cache_key(elem)
@@ -157,7 +182,7 @@ def get_2d_curves_in_view(view, only_model_intersections=False, elements=None, e
                     curves.append(curve)
                     if key is not None:
                         seen_curve_ids.add(key)
-    return curves
+    return curves, raster_points
 
 
 def endpoints_from_curves(curves):

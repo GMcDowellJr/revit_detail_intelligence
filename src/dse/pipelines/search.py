@@ -83,6 +83,7 @@ from dse.revit_api.geometry_2d import (
     get_2d_curves_in_view,
     to_view_local_2d,
 )
+from dse.revit_api import symbol_raster
 from dse.revit_api.preview_export import generate_and_cache_view_preview, get_cached_view_preview
 
 SEARCH_SCHEMA_VERSION = "view_search_features.v0.3"
@@ -261,6 +262,15 @@ def _layout_graph_features(view, elements, element_curves=None):
 
 def _build_state_context(view):
     all_elements = get_view_elements(view)
+    raster_symbol_points = symbol_raster.collect_raster_points_for_view(
+        view=view,
+        doc=getattr(view, "Document", None),
+        config=CONFIG,
+    )
+    total_family_instances = sum(1 for elem in all_elements if is_family_instance(elem))
+    covered_instance_ids = {
+        int(elem_id) for elem_id, pts in raster_symbol_points.items() if pts
+    }
     element_curves = {}
     for elem in all_elements:
         cache_key = element_curve_cache_key(elem)
@@ -273,18 +283,23 @@ def _build_state_context(view):
         view, kind, include_element_report=False, elements=all_elements
     )
 
-    curves = get_2d_curves_in_view(
+    curves, raster_points = get_2d_curves_in_view(
         view,
         only_model_intersections=(kind == "DETAIL_MODEL"),
         elements=all_elements,
         element_curves=element_curves,
+        symbol_raster_points=raster_symbol_points,
     )
     pts = endpoints_from_curves(curves)
     pts = dedupe_points_by_grid(pts, CONFIG["tol_coord"])
     pts2 = to_view_local_2d(pts, view)
+    raster_points = [(float(p[0]), float(p[1])) for p in raster_points]
+    raster_points = list(dict.fromkeys(raster_points))
 
     scale = robust_scale(pts2, CONFIG["kNN_k"])
-    ptsn = [(p[0] / scale, p[1] / scale) for p in pts2] if pts2 else []
+    ptsn_curve = [(p[0] / scale, p[1] / scale) for p in pts2] if pts2 else []
+    ptsn_raster = [(p[0] / scale, p[1] / scale) for p in raster_points] if raster_points else []
+    ptsn = ptsn_curve + ptsn_raster
 
     tokens_stable, tokens_context, counts_by_kind, symbol_multiset = _split_tokens(raw_tokens)
     token_signature = _stable_json_hash(
@@ -331,6 +346,8 @@ def _build_state_context(view):
         "ptsn": ptsn,
         "scale": scale,
         "all_elements": all_elements,
+        "covered_instance_ids": covered_instance_ids,
+        "total_family_instances": total_family_instances,
         "layout": layout,
         "tokens_stable": tokens_stable,
         "tokens_context": tokens_context,
@@ -501,6 +518,8 @@ def extract_feature_bundle(view, state_ctx=None):
     length_hist = _normalized_length_hist(curves, scale)
 
     fine = build_fine_metrics(curves, ptsn)
+    covered_instance_ids = set(ctx.get("covered_instance_ids", set()))
+    total_family_instances = int(ctx.get("total_family_instances", 0))
     fine.update(
         {
             "curve_count": float(len(curves)),
@@ -514,6 +533,7 @@ def extract_feature_bundle(view, state_ctx=None):
             "text_note_count": float(counts_by_kind.get("text_type", 0)),
             "dimension_count": float(counts_by_kind.get("dim_style", 0)),
             "symbol_instance_count": float(sum(symbol_multiset.values())),
+            "raster_geometry_coverage": float(len(covered_instance_ids)) / float(max(total_family_instances, 1)),
         }
     )
 
