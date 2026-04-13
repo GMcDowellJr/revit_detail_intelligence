@@ -147,14 +147,17 @@ def get_2d_curves_in_view(
                     except Exception:
                         elem_id_int = None
                 if elem_id_int is not None and elem_id_int in symbol_raster_points:
-                    for xy in symbol_raster_points.get(elem_id_int) or []:
+                    raster_for_elem = symbol_raster_points.get(elem_id_int) or []
+                    for xy in raster_for_elem:
                         try:
                             raster_points.append((float(xy[0]), float(xy[1])))
                         except Exception:
                             # Invalid raster point rows are ignored per-element.
                             continue
-                    # Raster replaces geometry-curve extraction for this FamilyInstance.
-                    continue
+                    # Raster replaces geometry-curve extraction only when non-empty;
+                    # empty raster payload falls back to vector curve extraction.
+                    if raster_for_elem:
+                        continue
             curves_for_elem = None
             if element_curves is not None:
                 cache_key = element_curve_cache_key(elem)
