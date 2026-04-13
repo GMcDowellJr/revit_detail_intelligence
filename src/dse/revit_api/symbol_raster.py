@@ -471,13 +471,13 @@ def _start_transaction(doc, name):
     return tx
 
 
-def _duplicate_and_isolate_view(doc, view, element):
+def _duplicate_and_isolate_view(doc, view, element, element_bbox):
     tmp_view = None
     try:
         import clr
 
         clr.AddReference("RevitAPI")
-        from Autodesk.Revit.DB import BoundingBoxXYZ, ViewDuplicateOption, XYZ
+        from Autodesk.Revit.DB import BoundingBoxXYZ, FilteredElementCollector, ViewDuplicateOption, XYZ
 
         tx_dup = _start_transaction(doc, "DSE: duplicate view for symbol raster")
         try:
@@ -492,20 +492,21 @@ def _duplicate_and_isolate_view(doc, view, element):
                 pass
             raise
 
-        tx_iso = _start_transaction(doc, "DSE: isolate element for symbol raster")
+        tx_hide = _start_transaction(doc, "DSE: hide other elements for symbol raster")
         try:
-            tmp_view.IsolateElementTemporary(element.Id)
-            tx_iso.Commit()
+            visible_ids = FilteredElementCollector(doc, tmp_view.Id).ToElementIds()
+            other_ids = [eid for eid in visible_ids if eid != element.Id]
+            if other_ids:
+                tmp_view.HideElements(other_ids)
+            tx_hide.Commit()
         except Exception:
             try:
-                tx_iso.RollBack()
+                tx_hide.RollBack()
             except Exception:
                 pass
             raise
 
-        bb = element.get_BoundingBox(tmp_view)
-        if bb is None:
-            bb = element.get_BoundingBox(None)
+        bb = element_bbox
         if bb is not None:
             tx_crop = _start_transaction(doc, "DSE: set crop for symbol raster")
             try:
@@ -514,12 +515,11 @@ def _duplicate_and_isolate_view(doc, view, element):
                 pad = max(width, height) * 0.25
                 pad = max(pad, 0.1)
                 expanded_bbox = BoundingBoxXYZ()
-                expanded_bbox.Min = XYZ(bb.Min.X - pad, bb.Min.Y - pad, bb.Min.Z - pad)
-                expanded_bbox.Max = XYZ(bb.Max.X + pad, bb.Max.Y + pad, bb.Max.Z + pad)
+                expanded_bbox.Min = XYZ(bb.Min.X - pad, bb.Min.Y - pad, -0.01524)
+                expanded_bbox.Max = XYZ(bb.Max.X + pad, bb.Max.Y + pad, 0.01524)
                 tmp_view.CropBoxActive = True
                 tmp_view.CropBoxVisible = False
                 tmp_view.CropBox = expanded_bbox
-                doc.Regenerate()
                 tx_crop.Commit()
             except Exception:
                 try:
@@ -527,6 +527,7 @@ def _duplicate_and_isolate_view(doc, view, element):
                 except Exception:
                     pass
                 raise
+            doc.Regenerate()
 
         return tmp_view
     except Exception:
@@ -589,6 +590,8 @@ def _collect_points_for_element(view, doc, element, config):
     try:
         transform = element.GetTotalTransform()
         bbox = element.get_BoundingBox(view)
+        if bbox is None:
+            bbox = element.get_BoundingBox(None)
     except Exception as exc:
         warnings.warn(
             "DSE: symbol raster OBB failure for element {} ({}) : {}".format(elem_id, family_name, exc),
@@ -635,7 +638,7 @@ def _collect_points_for_element(view, doc, element, config):
     retained_png_path = None
     export_tmp_dir = None
     try:
-        tmp_view = _duplicate_and_isolate_view(doc, view, element)
+        tmp_view = _duplicate_and_isolate_view(doc, view, element, bbox)
         if tmp_view is None:
             raise RuntimeError("failed to duplicate/isolate temporary view")
         dpi = int(config.get("symbol_raster_dpi", 150))
