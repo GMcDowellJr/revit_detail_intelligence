@@ -242,6 +242,17 @@ def _subsample_points(points, max_points):
     return points[:: max(1, step)]
 
 
+def _translate_points(points_xy, placement_point):
+    px, py = float(placement_point[0]), float(placement_point[1])
+    out = []
+    for xy in points_xy or []:
+        try:
+            out.append([float(xy[0]) + px, float(xy[1]) + py])
+        except Exception:
+            continue
+    return out
+
+
 def _dpi_enum_for_value(target_dpi):
     try:
         import clr
@@ -382,11 +393,6 @@ def _collect_points_for_element(view, doc, element, config):
         )
         return None, None
 
-    cache_path = _cache_file_path(config, family_name, cache_key)
-    cached = _read_cache_entry(cache_path)
-    if isinstance(cached, dict) and "points" in cached:
-        return elem_id, cached.get("points") or []
-
     transform = None
     bbox = None
     try:
@@ -402,6 +408,12 @@ def _collect_points_for_element(view, doc, element, config):
 
     if transform is None or bbox is None:
         return None, None
+
+    placement_point = to_view_local_2d([transform.Origin], view)[0]
+    cache_path = _cache_file_path(config, family_name, cache_key)
+    cached = _read_cache_entry(cache_path)
+    if isinstance(cached, dict) and "points" in cached:
+        return elem_id, _translate_points(cached.get("points") or [], placement_point)
 
     obb_width = abs(float(bbox.Max.X - bbox.Min.X))
     obb_height = abs(float(bbox.Max.Y - bbox.Min.Y))
@@ -419,8 +431,6 @@ def _collect_points_for_element(view, doc, element, config):
         }
         _write_cache_entry(cache_path, entry)
         return elem_id, []
-
-    placement_point = to_view_local_2d([transform.Origin], view)[0]
 
     tmp_view = None
     png_path = None
@@ -440,15 +450,15 @@ def _collect_points_for_element(view, doc, element, config):
     finally:
         _delete_temp_view(doc, tmp_view)
 
-    points_xy = []
+    points_xy_rel = []
     if png_path and os.path.exists(png_path):
         try:
             img_width, img_height, lum = _png_to_luminance(png_path)
             edges = _edge_pixels(img_width, img_height, lum)
             for col, row in edges:
-                x_local = placement_point[0] + ((float(col) / float(max(1, img_width))) - 0.5) * obb_width
-                y_local = placement_point[1] + ((float(row) / float(max(1, img_height))) - 0.5) * obb_height
-                points_xy.append([x_local, y_local])
+                x_rel = ((float(col) / float(max(1, img_width))) - 0.5) * obb_width
+                y_rel = ((float(row) / float(max(1, img_height))) - 0.5) * obb_height
+                points_xy_rel.append([x_rel, y_rel])
         except Exception as exc:
             warnings.warn(
                 "DSE: symbol raster decode failure for element {} ({}) : {}".format(elem_id, family_name, exc),
@@ -457,7 +467,8 @@ def _collect_points_for_element(view, doc, element, config):
             )
             return None, None
 
-    points_xy = _subsample_points(points_xy, int(config.get("symbol_raster_max_points", 200)))
+    points_xy_rel = _subsample_points(points_xy_rel, int(config.get("symbol_raster_max_points", 200)))
+    points_xy = _translate_points(points_xy_rel, placement_point)
 
     entry = {
         "cache_schema": "symbol_raster.v1",
@@ -467,7 +478,7 @@ def _collect_points_for_element(view, doc, element, config):
         "orientation_bucket": orientation_bucket,
         "obb_width": obb_width,
         "obb_height": obb_height,
-        "points": points_xy,
+        "points": points_xy_rel,
         "build_time_utc": datetime.now(timezone.utc).isoformat(),
     }
     _write_cache_entry(cache_path, entry)
