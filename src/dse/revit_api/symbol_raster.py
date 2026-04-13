@@ -79,12 +79,17 @@ def _document_identity(doc):
 def _symbol_cache_key(element, view):
     family_name, type_name = _safe_type_sig_parts(element)
     view_scale = int(round(float(getattr(view, "Scale", 1))))
+    detail_level = str(int(view.DetailLevel))
     transform = element.GetTotalTransform()
     orientation_bucket = _orientation_bucket_from_transform(transform)
     doc_identity = _document_identity(getattr(view, "Document", None))
     doc_scope = hashlib.sha1(doc_identity.encode("utf-8")).hexdigest()[:12]
-    key = "{}|{}|{}|{}|{}".format(doc_scope, family_name, type_name, view_scale, orientation_bucket)
-    return key, family_name, type_name, view_scale, orientation_bucket, doc_scope
+    # Cache schema note: detail_level was added to the key. Existing symbol_rasters caches
+    # built without detail_level are intentionally invalidated and will rebuild on misses.
+    key = "{}|{}|{}|{}|{}|{}".format(
+        doc_scope, family_name, type_name, view_scale, detail_level, orientation_bucket
+    )
+    return key, family_name, type_name, view_scale, detail_level, orientation_bucket, doc_scope
 
 
 def _cache_file_path(config, family_name, cache_key):
@@ -494,9 +499,15 @@ def _collect_points_for_element(view, doc, element, config):
     elem_id = _safe_int_element_id(element)
     family_name, _ = _safe_type_sig_parts(element)
     try:
-        cache_key, family_name, _type_name, view_scale, orientation_bucket, doc_scope = _symbol_cache_key(
-            element, view
-        )
+        (
+            cache_key,
+            family_name,
+            _type_name,
+            view_scale,
+            detail_level,
+            orientation_bucket,
+            doc_scope,
+        ) = _symbol_cache_key(element, view)
     except Exception as exc:
         warnings.warn(
             "DSE: symbol raster key failure for element {} ({}) : {}".format(elem_id, family_name, exc),
@@ -535,6 +546,7 @@ def _collect_points_for_element(view, doc, element, config):
             "cache_key": cache_key,
             "family_name": family_name,
             "view_scale": view_scale,
+            "detail_level": detail_level,
             "orientation_bucket": orientation_bucket,
             "doc_scope": doc_scope,
             "obb_width": obb_width,
@@ -593,6 +605,7 @@ def _collect_points_for_element(view, doc, element, config):
             "cache_key": cache_key,
             "family_name": family_name,
             "view_scale": view_scale,
+            "detail_level": detail_level,
             "orientation_bucket": orientation_bucket,
             "doc_scope": doc_scope,
             "obb_width": obb_width,
