@@ -618,6 +618,8 @@ def _collect_points_for_element(view, doc, element, config):
     try:
         transform = element.GetTotalTransform()
         bbox = element.get_BoundingBox(view)
+        if bbox is None:
+            bbox = element.get_BoundingBox(None)
     except Exception as exc:
         warnings.warn(
             "DSE: symbol raster OBB failure for element {} ({}) : {}".format(elem_id, family_name, exc),
@@ -646,6 +648,18 @@ def _collect_points_for_element(view, doc, element, config):
 
     obb_width = abs(float(bbox.Max.X - bbox.Min.X))
     obb_height = abs(float(bbox.Max.Y - bbox.Min.Y))
+    if obb_width <= 0.0 or obb_height <= 0.0:
+        try:
+            bbox_fallback = element.get_BoundingBox(None)
+        except Exception:
+            bbox_fallback = None
+        if bbox_fallback is not None:
+            fb_width = abs(float(bbox_fallback.Max.X - bbox_fallback.Min.X))
+            fb_height = abs(float(bbox_fallback.Max.Y - bbox_fallback.Min.Y))
+            if fb_width > 0.0 and fb_height > 0.0:
+                bbox = bbox_fallback
+                obb_width = fb_width
+                obb_height = fb_height
     if obb_width <= 0.0 or obb_height <= 0.0:
         warnings.warn(
             "DSE: symbol raster zero-size bbox for element {} ({}) in source view; returning empty points".format(
