@@ -15,7 +15,7 @@ from dse.revit_api.collect import get_view_elements, is_family_instance
 from dse.revit_api.geometry_2d import to_view_local_2d
 
 _DIAG_JSON_PATH = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "..", "symbol_raster_diagnostics.json")
+    os.path.join(r"C:\Temp\revit_detail_intelligence\cache", "symbol_raster_diagnostics.json")
 )
 
 
@@ -26,6 +26,7 @@ def _write_diag_json(event, payload):
         "payload": payload,
     }
     try:
+        ensure_dir(os.path.dirname(_DIAG_JSON_PATH))
         existing = []
         if os.path.exists(_DIAG_JSON_PATH):
             with open(_DIAG_JSON_PATH, "r", encoding="utf-8") as handle:
@@ -121,6 +122,13 @@ def _cache_file_path(config, family_name, cache_key):
     family_dir = ensure_dir(os.path.join(cache_root, "symbol_rasters", _sanitize_path_component(family_name)))
     key_hash = hashlib.sha1(cache_key.encode("utf-8")).hexdigest()[:16]
     return os.path.join(family_dir, "{}.json".format(key_hash))
+
+
+def _retained_png_path(config, family_name, cache_key):
+    cache_root = ensure_dir(config.get("cache_root", r"C:\temp\revit_detail_intelligence\cache"))
+    png_root = ensure_dir(os.path.join(cache_root, "symbol_rasters_png", _sanitize_path_component(family_name)))
+    key_hash = hashlib.sha1(cache_key.encode("utf-8")).hexdigest()[:16]
+    return os.path.join(png_root, "{}.png".format(key_hash))
 
 
 def _read_cache_entry(path):
@@ -341,7 +349,10 @@ def _export_temp_view_png(doc, tmp_view, dpi):
     dpi_enum = _dpi_enum_for_value(dpi)
     if dpi_enum is not None and hasattr(opts, "ImageResolution"):
         opts.ImageResolution = dpi_enum
-    opts.SetViewsAndSheets([tmp_view.Id])
+    if hasattr(opts, "SetViewsAndSheets"):
+        opts.SetViewsAndSheets([tmp_view.Id])
+    elif hasattr(opts, "ViewName"):
+        opts.ViewName = tmp_view.Name
 
     doc.ExportImage(opts)
     tmp_listing = os.listdir(tmp_dir)
@@ -466,7 +477,7 @@ def _duplicate_and_isolate_view(doc, view, element):
         import clr
 
         clr.AddReference("RevitAPI")
-        from Autodesk.Revit.DB import ViewDuplicateOption
+        from Autodesk.Revit.DB import BoundingBoxXYZ, ViewDuplicateOption, XYZ
 
         tx_dup = _start_transaction(doc, "DSE: duplicate view for symbol raster")
         try:
@@ -491,6 +502,31 @@ def _duplicate_and_isolate_view(doc, view, element):
             except Exception:
                 pass
             raise
+
+        bb = element.get_BoundingBox(tmp_view)
+        if bb is None:
+            bb = element.get_BoundingBox(None)
+        if bb is not None:
+            tx_crop = _start_transaction(doc, "DSE: set crop for symbol raster")
+            try:
+                width = float(bb.Max.X - bb.Min.X)
+                height = float(bb.Max.Y - bb.Min.Y)
+                pad = max(width, height) * 0.25
+                pad = max(pad, 0.1)
+                expanded_bbox = BoundingBoxXYZ()
+                expanded_bbox.Min = XYZ(bb.Min.X - pad, bb.Min.Y - pad, bb.Min.Z - pad)
+                expanded_bbox.Max = XYZ(bb.Max.X + pad, bb.Max.Y + pad, bb.Max.Z + pad)
+                tmp_view.CropBoxActive = True
+                tmp_view.CropBoxVisible = False
+                tmp_view.CropBox = expanded_bbox
+                doc.Regenerate()
+                tx_crop.Commit()
+            except Exception:
+                try:
+                    tx_crop.RollBack()
+                except Exception:
+                    pass
+                raise
 
         return tmp_view
     except Exception:
@@ -589,8 +625,14 @@ def _collect_points_for_element(view, doc, element, config):
         _write_cache_entry(cache_path, entry)
         return elem_id, []
 
+    pad = max(obb_width, obb_height) * 0.25
+    pad = max(pad, 0.1)
+    raster_world_width = obb_width + (2.0 * pad)
+    raster_world_height = obb_height + (2.0 * pad)
+
     tmp_view = None
     png_path = None
+    retained_png_path = None
     export_tmp_dir = None
     try:
         tmp_view = _duplicate_and_isolate_view(doc, view, element)
@@ -598,6 +640,17 @@ def _collect_points_for_element(view, doc, element, config):
             raise RuntimeError("failed to duplicate/isolate temporary view")
         dpi = int(config.get("symbol_raster_dpi", 150))
         png_path, export_tmp_dir = _export_temp_view_png(doc, tmp_view, dpi)
+        if png_path and os.path.exists(png_path):
+            retained_png_path = _retained_png_path(config, family_name, cache_key)
+            with open(png_path, "rb") as src:
+                blob = src.read()
+            with open(retained_png_path, "wb") as dst:
+                dst.write(blob)
+            _write_diag_json(
+                "retained_export_png",
+                {"source": png_path, "retained": retained_png_path, "size_bytes": int(len(blob))},
+            )
+            png_path = retained_png_path
     except Exception as exc:
         warnings.warn(
             "DSE: symbol raster export failure for element {} ({}) : {}".format(elem_id, family_name, exc),
@@ -616,8 +669,8 @@ def _collect_points_for_element(view, doc, element, config):
                 img_width, img_height, lum = _png_to_luminance(png_path)
                 edges = _edge_pixels(img_width, img_height, lum)
                 for col, row in edges:
-                    x_rel = ((float(col) / float(max(1, img_width))) - 0.5) * obb_width
-                    y_rel = ((float(row) / float(max(1, img_height))) - 0.5) * obb_height
+                    x_rel = ((float(col) / float(max(1, img_width))) - 0.5) * raster_world_width
+                    y_rel = ((float(row) / float(max(1, img_height))) - 0.5) * raster_world_height
                     points_xy_rel.append([x_rel, y_rel])
             except Exception as exc:
                 warnings.warn(
