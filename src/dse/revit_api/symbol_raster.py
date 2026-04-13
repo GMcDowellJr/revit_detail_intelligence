@@ -477,13 +477,21 @@ def _duplicate_and_isolate_view(doc, view, element):
         import clr
 
         clr.AddReference("RevitAPI")
-        from Autodesk.Revit.DB import BoundingBoxXYZ, FilteredElementCollector, ViewDuplicateOption, XYZ
+        from Autodesk.Revit.DB import (
+            BoundingBoxXYZ,
+            ElementId,
+            FilteredElementCollector,
+            ViewDuplicateOption,
+            XYZ,
+        )
+
+        from System.Collections.Generic import List
 
         bb = element.get_BoundingBox(view)
         if bb is None:
             bb = element.get_BoundingBox(None)
 
-        other_ids = []
+        other_ids = List[ElementId]()
         collector = FilteredElementCollector(doc, view.Id).WhereElementIsNotElementType()
         for candidate in collector:
             candidate_id = getattr(candidate, "Id", None)
@@ -495,7 +503,7 @@ def _duplicate_and_isolate_view(doc, view, element):
             except Exception:
                 if candidate_id == element.Id:
                     continue
-            other_ids.append(candidate_id)
+            other_ids.Add(candidate_id)
 
         tx_dup = _start_transaction(doc, "DSE: duplicate view for symbol raster")
         try:
@@ -510,7 +518,7 @@ def _duplicate_and_isolate_view(doc, view, element):
                 pass
             raise
 
-        if other_ids:
+        if other_ids.Count > 0:
             tx_hide = _start_transaction(doc, "DSE: hide other elements for symbol raster")
             try:
                 tmp_view.HideElements(other_ids)
@@ -620,7 +628,16 @@ def _collect_points_for_element(view, doc, element, config):
     cache_path = _cache_file_path(config, family_name, cache_key)
     cached = _read_cache_entry(cache_path)
     if isinstance(cached, dict) and "points" in cached:
-        return elem_id, _translate_points(cached.get("points") or [], placement_point)
+        cached_points = cached.get("points") or []
+        if cached_points:
+            return elem_id, _translate_points(cached_points, placement_point)
+        warnings.warn(
+            "DSE: symbol raster cache hit with empty points for element {} ({}); rebuilding".format(
+                elem_id, family_name
+            ),
+            RuntimeWarning,
+            stacklevel=2,
+        )
 
     obb_width = abs(float(bbox.Max.X - bbox.Min.X))
     obb_height = abs(float(bbox.Max.Y - bbox.Min.Y))
