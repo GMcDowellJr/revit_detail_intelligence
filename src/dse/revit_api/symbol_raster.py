@@ -477,7 +477,14 @@ def _duplicate_and_isolate_view(doc, view, element, element_bbox):
         import clr
 
         clr.AddReference("RevitAPI")
-        from Autodesk.Revit.DB import BoundingBoxXYZ, FilteredElementCollector, ViewDuplicateOption, XYZ
+        from Autodesk.Revit.DB import (
+            BoundingBoxXYZ,
+            ElementId,
+            FilteredElementCollector,
+            ViewDuplicateOption,
+            XYZ,
+        )
+        from System.Collections.Generic import List
 
         tx_dup = _start_transaction(doc, "DSE: duplicate view for symbol raster")
         try:
@@ -494,8 +501,14 @@ def _duplicate_and_isolate_view(doc, view, element, element_bbox):
 
         tx_hide = _start_transaction(doc, "DSE: hide other elements for symbol raster")
         try:
-            visible_ids = FilteredElementCollector(doc, tmp_view.Id).ToElementIds()
-            other_ids = [eid for eid in visible_ids if eid != element.Id]
+            visible_elements = FilteredElementCollector(doc, tmp_view.Id).WhereElementIsNotElementType()
+            other_ids = List[ElementId]()
+            for candidate in visible_elements:
+                if candidate.Id == element.Id:
+                    continue
+                if not candidate.CanBeHidden(tmp_view):
+                    continue
+                other_ids.Add(candidate.Id)
             if other_ids:
                 tmp_view.HideElements(other_ids)
             tx_hide.Commit()
