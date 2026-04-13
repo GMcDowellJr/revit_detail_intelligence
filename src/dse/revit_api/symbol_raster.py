@@ -15,7 +15,7 @@ from dse.revit_api.collect import get_view_elements, is_family_instance
 from dse.revit_api.geometry_2d import to_view_local_2d
 
 _DIAG_JSON_PATH = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "..", "symbol_raster_diagnostics.json")
+    os.path.join(r"C:\Temp\revit_detail_intelligence\cache", "symbol_raster_diagnostics.json")
 )
 
 
@@ -26,6 +26,7 @@ def _write_diag_json(event, payload):
         "payload": payload,
     }
     try:
+        ensure_dir(os.path.dirname(_DIAG_JSON_PATH))
         existing = []
         if os.path.exists(_DIAG_JSON_PATH):
             with open(_DIAG_JSON_PATH, "r", encoding="utf-8") as handle:
@@ -121,6 +122,13 @@ def _cache_file_path(config, family_name, cache_key):
     family_dir = ensure_dir(os.path.join(cache_root, "symbol_rasters", _sanitize_path_component(family_name)))
     key_hash = hashlib.sha1(cache_key.encode("utf-8")).hexdigest()[:16]
     return os.path.join(family_dir, "{}.json".format(key_hash))
+
+
+def _retained_png_path(config, family_name, cache_key):
+    cache_root = ensure_dir(config.get("cache_root", r"C:\temp\revit_detail_intelligence\cache"))
+    png_root = ensure_dir(os.path.join(cache_root, "symbol_rasters_png", _sanitize_path_component(family_name)))
+    key_hash = hashlib.sha1(cache_key.encode("utf-8")).hexdigest()[:16]
+    return os.path.join(png_root, "{}.png".format(key_hash))
 
 
 def _read_cache_entry(path):
@@ -624,6 +632,7 @@ def _collect_points_for_element(view, doc, element, config):
 
     tmp_view = None
     png_path = None
+    retained_png_path = None
     export_tmp_dir = None
     try:
         tmp_view = _duplicate_and_isolate_view(doc, view, element)
@@ -631,6 +640,17 @@ def _collect_points_for_element(view, doc, element, config):
             raise RuntimeError("failed to duplicate/isolate temporary view")
         dpi = int(config.get("symbol_raster_dpi", 150))
         png_path, export_tmp_dir = _export_temp_view_png(doc, tmp_view, dpi)
+        if png_path and os.path.exists(png_path):
+            retained_png_path = _retained_png_path(config, family_name, cache_key)
+            with open(png_path, "rb") as src:
+                blob = src.read()
+            with open(retained_png_path, "wb") as dst:
+                dst.write(blob)
+            _write_diag_json(
+                "retained_export_png",
+                {"source": png_path, "retained": retained_png_path, "size_bytes": int(len(blob))},
+            )
+            png_path = retained_png_path
     except Exception as exc:
         warnings.warn(
             "DSE: symbol raster export failure for element {} ({}) : {}".format(elem_id, family_name, exc),
