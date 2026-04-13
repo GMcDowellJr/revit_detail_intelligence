@@ -109,10 +109,16 @@ def _symbol_cache_key(element, view):
     orientation_bucket = _orientation_bucket_from_transform(transform)
     doc_identity = _document_identity(getattr(view, "Document", None))
     doc_scope = hashlib.sha1(doc_identity.encode("utf-8")).hexdigest()[:12]
-    # Cache schema note: detail_level was added to the key. Existing symbol_rasters caches
-    # built without detail_level are intentionally invalidated and will rebuild on misses.
-    key = "{}|{}|{}|{}|{}|{}".format(
-        doc_scope, family_name, type_name, view_scale, detail_level, orientation_bucket
+    # Cache schema note: detail_level and schema version are included in the key.
+    # Existing caches from prior symbol_raster revisions are intentionally invalidated.
+    key = "{}|{}|{}|{}|{}|{}|{}".format(
+        "symbol_raster.v2",
+        doc_scope,
+        family_name,
+        type_name,
+        view_scale,
+        detail_level,
+        orientation_bucket,
     )
     return key, family_name, type_name, view_scale, detail_level, orientation_bucket, doc_scope
 
@@ -501,7 +507,9 @@ def _duplicate_and_isolate_view(doc, view, element, element_bbox):
 
         tx_hide = _start_transaction(doc, "DSE: hide other elements for symbol raster")
         try:
-            visible_ids = FilteredElementCollector(doc, tmp_view.Id).ToElementIds()
+            visible_ids = (
+                FilteredElementCollector(doc, view.Id).WhereElementIsNotElementType().ToElementIds()
+            )
             other_ids = List[ElementId]()
             for candidate_id in visible_ids:
                 if candidate_id == element.Id:
@@ -634,14 +642,18 @@ def _collect_points_for_element(view, doc, element, config):
     placement_point = to_view_local_2d([transform.Origin], view)[0]
     cache_path = _cache_file_path(config, family_name, cache_key)
     cached = _read_cache_entry(cache_path)
-    if isinstance(cached, dict) and "points" in cached:
+    if (
+        isinstance(cached, dict)
+        and cached.get("cache_schema") == "symbol_raster.v2"
+        and "points" in cached
+    ):
         return elem_id, _translate_points(cached.get("points") or [], placement_point)
 
     obb_width = abs(float(bbox.Max.X - bbox.Min.X))
     obb_height = abs(float(bbox.Max.Y - bbox.Min.Y))
     if obb_width <= 0.0 or obb_height <= 0.0:
         entry = {
-            "cache_schema": "symbol_raster.v1",
+            "cache_schema": "symbol_raster.v2",
             "cache_key": cache_key,
             "family_name": family_name,
             "view_scale": view_scale,
@@ -717,7 +729,7 @@ def _collect_points_for_element(view, doc, element, config):
         points_xy = _translate_points(points_xy_rel, placement_point)
 
         entry = {
-            "cache_schema": "symbol_raster.v1",
+            "cache_schema": "symbol_raster.v2",
             "cache_key": cache_key,
             "family_name": family_name,
             "view_scale": view_scale,
