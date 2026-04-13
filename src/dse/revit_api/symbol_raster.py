@@ -484,6 +484,17 @@ def _duplicate_and_isolate_view(doc, view, element):
                 pass
             raise
 
+        tx_iso = _start_transaction(doc, "DSE: isolate element for symbol raster")
+        try:
+            tmp_view.IsolateElementTemporary(element.Id)
+            tx_iso.Commit()
+        except Exception:
+            try:
+                tx_iso.RollBack()
+            except Exception:
+                pass
+            raise
+
         bb = element.get_BoundingBox(tmp_view)
         if bb is None:
             bb = element.get_BoundingBox(None)
@@ -606,6 +617,11 @@ def _collect_points_for_element(view, doc, element, config):
         _write_cache_entry(cache_path, entry)
         return elem_id, []
 
+    pad = max(obb_width, obb_height) * 0.25
+    pad = max(pad, 0.1)
+    raster_world_width = obb_width + (2.0 * pad)
+    raster_world_height = obb_height + (2.0 * pad)
+
     tmp_view = None
     png_path = None
     export_tmp_dir = None
@@ -633,8 +649,8 @@ def _collect_points_for_element(view, doc, element, config):
                 img_width, img_height, lum = _png_to_luminance(png_path)
                 edges = _edge_pixels(img_width, img_height, lum)
                 for col, row in edges:
-                    x_rel = ((float(col) / float(max(1, img_width))) - 0.5) * obb_width
-                    y_rel = ((float(row) / float(max(1, img_height))) - 0.5) * obb_height
+                    x_rel = ((float(col) / float(max(1, img_width))) - 0.5) * raster_world_width
+                    y_rel = ((float(row) / float(max(1, img_height))) - 0.5) * raster_world_height
                     points_xy_rel.append([x_rel, y_rel])
             except Exception as exc:
                 warnings.warn(
