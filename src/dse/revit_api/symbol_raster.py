@@ -360,7 +360,20 @@ def _duplicate_and_isolate_view(doc, view, element):
 
         return tmp_view
     except Exception:
-        return tmp_view
+        if tmp_view is not None:
+            try:
+                tx_cleanup = _start_transaction(doc, "DSE: cleanup failed symbol raster view")
+                try:
+                    doc.Delete(tmp_view.Id)
+                    tx_cleanup.Commit()
+                except Exception:
+                    try:
+                        tx_cleanup.RollBack()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        return None
 
 
 def _delete_temp_view(doc, tmp_view):
