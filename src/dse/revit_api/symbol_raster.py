@@ -509,7 +509,7 @@ def _duplicate_and_isolate_view(doc, view, element, element_bbox):
                 if not candidate.CanBeHidden(tmp_view):
                     continue
                 other_ids.Add(candidate.Id)
-            if other_ids:
+            if other_ids.Count > 0:
                 tmp_view.HideElements(other_ids)
             tx_hide.Commit()
         except Exception:
