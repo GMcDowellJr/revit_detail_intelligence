@@ -143,6 +143,7 @@ def test_index_views_writes_doc_scoped_cache_files(monkeypatch, tmp_path):
     out_dir = tmp_path / "cache" / "view_features"
     files = sorted([name for name in os.listdir(str(out_dir)) if name.startswith("view_9__doc_")])
     assert len(files) == 1
+    assert not (out_dir / "view_9.json").exists()
 
 
 def test_index_views_counts_preview_failures(monkeypatch):

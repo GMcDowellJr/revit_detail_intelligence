@@ -1,4 +1,5 @@
 import hashlib
+import inspect
 import json
 import math
 import os
@@ -614,7 +615,7 @@ def extract_features(view):
     return legacy_view_features_from_search(bundle.search_features)
 
 
-def _extract_bundle_with_cache(view):
+def _extract_bundle_with_cache(view, write_legacy_cache_record=True):
     state_ctx = _build_state_context(view)
     cache_root = resolve_view_cache_root(CONFIG)
     cached, status = get_cached_bundle_with_diagnostics(
@@ -638,6 +639,7 @@ def _extract_bundle_with_cache(view):
         pipeline_version=CONFIG["pipeline_version"],
         schema_version=SEARCH_SCHEMA_VERSION,
         payload=fresh_bundle,
+        write_disk=write_legacy_cache_record,
     )
     cache_status = "rebuilt" if status == "miss" else status
     fresh_bundle.presentation_summary.debug["cache_status"] = cache_status
@@ -725,6 +727,17 @@ def _load_all_cached_bundles(cache_root):
     return bundles
 
 
+
+
+def _extract_bundle_for_index(view):
+    try:
+        sig = inspect.signature(_extract_bundle_with_cache)
+    except Exception:
+        sig = None
+    if sig is not None and "write_legacy_cache_record" in sig.parameters:
+        return _extract_bundle_with_cache(view, write_legacy_cache_record=False)
+    return _extract_bundle_with_cache(view)
+
 def index_views(views):
     cache_root = resolve_view_cache_root(CONFIG)
     statuses = {}
@@ -738,7 +751,7 @@ def index_views(views):
             skipped += 1
             continue
         try:
-            bundle, status = _extract_bundle_with_cache(view)
+            bundle, status = _extract_bundle_for_index(view)
         except Exception as exc:
             accum.accumulate_error(getattr(getattr(view, "Id", None), "IntegerValue", None), view_label(view), str(exc))
             raise

@@ -165,6 +165,7 @@ def put_bundle_in_caches(
     pipeline_version: str,
     schema_version: str,
     payload: ViewFeatureBundle,
+    write_disk: bool = True,
 ):
     entry = ViewFeatureCacheEntry(
         view_id=view_id,
@@ -174,7 +175,8 @@ def put_bundle_in_caches(
         payload=payload,
     )
     in_memory_cache.put(entry)
-    write_cache_record(cache_root, entry)
+    if write_disk:
+        write_cache_record(cache_root, entry)
 
 
 def resolve_view_cache_root(config: Dict[str, object]) -> str:
