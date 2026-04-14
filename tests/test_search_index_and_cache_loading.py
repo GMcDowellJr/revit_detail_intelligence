@@ -110,7 +110,7 @@ def test_index_views_mixed_cache_hit_and_miss(monkeypatch):
     views = [FakeView(1), FakeView(2), object()]
     monkeypatch.setattr(search, "is_view", lambda value: hasattr(value, "Id"))
 
-    def fake_extract(view):
+    def fake_extract(view, symbol_raster_lookup_callback=None):
         status = "hit_disk" if view.Id.IntegerValue == 1 else "rebuilt"
         return _bundle(view.Id.IntegerValue, cache_status=status), status
 
@@ -138,7 +138,10 @@ def test_index_views_writes_doc_scoped_cache_files(monkeypatch, tmp_path):
     monkeypatch.setattr(
         search,
         "_extract_bundle_with_cache",
-        lambda view: (_bundle(view.Id.IntegerValue, source_doc_id="doc-x"), "rebuilt"),
+        lambda view, symbol_raster_lookup_callback=None: (
+            _bundle(view.Id.IntegerValue, source_doc_id="doc-x"),
+            "rebuilt",
+        ),
     )
     monkeypatch.setattr(search, "generate_and_cache_view_preview", lambda *_args, **_kwargs: "preview.png")
 
@@ -161,7 +164,11 @@ def test_index_views_counts_preview_failures(monkeypatch):
             self.Id = FakeId(value)
 
     monkeypatch.setattr(search, "is_view", lambda value: hasattr(value, "Id"))
-    monkeypatch.setattr(search, "_extract_bundle_with_cache", lambda view: (_bundle(view.Id.IntegerValue), "rebuilt"))
+    monkeypatch.setattr(
+        search,
+        "_extract_bundle_with_cache",
+        lambda view, symbol_raster_lookup_callback=None: (_bundle(view.Id.IntegerValue), "rebuilt"),
+    )
     monkeypatch.setattr(search, "_write_doc_scoped_cache_record", lambda *_args, **_kwargs: None)
 
     def _boom(*_args, **_kwargs):
@@ -183,7 +190,11 @@ def test_index_views_counts_preview_failures_when_generate_returns_none(monkeypa
             self.Id = FakeId(value)
 
     monkeypatch.setattr(search, "is_view", lambda value: hasattr(value, "Id"))
-    monkeypatch.setattr(search, "_extract_bundle_with_cache", lambda view: (_bundle(view.Id.IntegerValue), "rebuilt"))
+    monkeypatch.setattr(
+        search,
+        "_extract_bundle_with_cache",
+        lambda view, symbol_raster_lookup_callback=None: (_bundle(view.Id.IntegerValue), "rebuilt"),
+    )
     monkeypatch.setattr(search, "_write_doc_scoped_cache_record", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(search, "generate_and_cache_view_preview", lambda *_args, **_kwargs: None)
 
@@ -218,7 +229,7 @@ def test_extract_bundle_for_index_delegates_without_compat_shim(monkeypatch):
 
     assert bundle.search_features.view_id == 31
     assert status == "rebuilt"
-    assert calls == [(True, None)]
+    assert calls == [(True, callback)]
 
 
 def test_index_views_writes_legacy_cache_entry_that_hits_disk(monkeypatch, tmp_path):
