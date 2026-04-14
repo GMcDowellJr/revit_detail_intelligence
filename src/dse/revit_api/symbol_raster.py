@@ -651,6 +651,13 @@ def _collect_points_for_element(view, doc, element, config):
     export_tmp_dir = None
     try:
         tmp_view = _create_fresh_view_with_symbol(doc, view, element)
+        _write_diag_json(
+            "fresh_view_created",
+            {
+                "tmp_view_is_none": tmp_view is None,
+                "tmp_view_id": _safe_int_element_id(tmp_view) if tmp_view is not None else None,
+            },
+        )
         if tmp_view is None:
             raise RuntimeError("failed to duplicate/isolate temporary view")
         dpi = int(config.get("symbol_raster_dpi", 150))
