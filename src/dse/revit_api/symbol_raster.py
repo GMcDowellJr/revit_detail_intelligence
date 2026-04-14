@@ -672,7 +672,14 @@ def _get_drafting_view_family_type_id(doc):
     return None
 
 
-def _create_fresh_view_with_symbol(doc, view, element, obb_width=0.0, obb_height=0.0):
+def _create_fresh_view_with_symbol(
+    doc,
+    view,
+    element,
+    obb_width=0.0,
+    obb_height=0.0,
+    include_canonical_bounds=False,
+):
     tmp_view = None
     tmp_inst = None
     symbol = None
@@ -736,8 +743,35 @@ def _create_fresh_view_with_symbol(doc, view, element, obb_width=0.0, obb_height
             doc.Regenerate()
 
         bb = tmp_inst.get_BoundingBox(tmp_view)
+        canonical_bounds = None
+        if bb is not None:
+            canonical_bounds = {
+                "min_x": float(bb.Min.X),
+                "max_x": float(bb.Max.X),
+                "min_y": float(bb.Min.Y),
+                "max_y": float(bb.Max.Y),
+            }
+        else:
+            # Fallback for rare API cases: use deterministic canonical defaults so cache output
+            # remains type-stable even when temporary instance bounds are unavailable.
+            if _is_line_based_family_instance(element):
+                canonical_bounds = {
+                    "min_x": 0.0,
+                    "max_x": float(_CANONICAL_LINE_LENGTH_FT),
+                    "min_y": -0.05 * float(_CANONICAL_LINE_LENGTH_FT),
+                    "max_y": 0.05 * float(_CANONICAL_LINE_LENGTH_FT),
+                }
+            else:
+                half_w = max(float(obb_width) * 0.5, 1.0 / 12.0)
+                half_h = max(float(obb_height) * 0.5, 1.0 / 12.0)
+                canonical_bounds = {
+                    "min_x": -half_w,
+                    "max_x": half_w,
+                    "min_y": -half_h,
+                    "max_y": half_h,
+                }
         if bb is None:
-            return tmp_view
+            return (tmp_view, canonical_bounds) if include_canonical_bounds else tmp_view
 
         with scoped_transaction(doc, "DSE: set crop for symbol raster"):
             width = float(bb.Max.X - bb.Min.X)
@@ -752,7 +786,7 @@ def _create_fresh_view_with_symbol(doc, view, element, obb_width=0.0, obb_height
             tmp_view.CropBox = expanded_bbox
             doc.Regenerate()
 
-        return tmp_view
+        return (tmp_view, canonical_bounds) if include_canonical_bounds else tmp_view
     except Exception as exc:
         family_name_diag = "unknown"
         symbol_name_diag = "unknown"
@@ -909,19 +943,25 @@ def _collect_points_for_element(view, doc, element, config):
         _write_cache_entry(cache_path, entry)
         return elem_id, []
 
-    canonical_width = _CANONICAL_LINE_LENGTH_FT if is_line_based else obb_width
-    canonical_height = obb_height
-    pad = max(canonical_width, canonical_height) * 0.25
-    pad = max(pad, 0.1)
-    raster_world_width = canonical_width + (2.0 * pad)
-    raster_world_height = canonical_height + (2.0 * pad)
-
     tmp_view = None
+    canonical_bounds = None
     png_path = None
     retained_png_path = None
     export_tmp_dir = None
     try:
-        tmp_view = _create_fresh_view_with_symbol(doc, view, element, obb_width=obb_width, obb_height=obb_height)
+        tmp_view_result = _create_fresh_view_with_symbol(
+            doc,
+            view,
+            element,
+            obb_width=obb_width,
+            obb_height=obb_height,
+            include_canonical_bounds=True,
+        )
+        if isinstance(tmp_view_result, tuple):
+            tmp_view, canonical_bounds = tmp_view_result
+        else:
+            # Backward compatibility for test stubs that still return only a view-like object.
+            tmp_view = tmp_view_result
         _write_diag_json(
             "fresh_view_created",
             {
@@ -956,23 +996,45 @@ def _collect_points_for_element(view, doc, element, config):
         _delete_temp_view(doc, tmp_view)
 
     try:
+        if not canonical_bounds:
+            # Keep fallback deterministic if canonical bounds are unavailable.
+            if is_line_based:
+                canonical_bounds = {
+                    "min_x": 0.0,
+                    "max_x": float(_CANONICAL_LINE_LENGTH_FT),
+                    "min_y": -0.05 * float(_CANONICAL_LINE_LENGTH_FT),
+                    "max_y": 0.05 * float(_CANONICAL_LINE_LENGTH_FT),
+                }
+            else:
+                half_w = max(float(obb_width) * 0.5, 1.0 / 12.0)
+                half_h = max(float(obb_height) * 0.5, 1.0 / 12.0)
+                canonical_bounds = {
+                    "min_x": -half_w,
+                    "max_x": half_w,
+                    "min_y": -half_h,
+                    "max_y": half_h,
+                }
+        canonical_width = max(float(canonical_bounds["max_x"]) - float(canonical_bounds["min_x"]), 1e-9)
+        canonical_height = max(float(canonical_bounds["max_y"]) - float(canonical_bounds["min_y"]), 1e-9)
+        pad = max(canonical_width, canonical_height) * 0.25
+        pad = max(pad, 0.1)
+        raster_min_x = float(canonical_bounds["min_x"]) - pad
+        raster_max_x = float(canonical_bounds["max_x"]) + pad
+        raster_min_y = float(canonical_bounds["min_y"]) - pad
+        raster_max_y = float(canonical_bounds["max_y"]) + pad
+        raster_world_width = raster_max_x - raster_min_x
+        raster_world_height = raster_max_y - raster_min_y
+
         points_xy_rel = []
         if png_path and os.path.exists(png_path):
             try:
                 img_width, img_height, lum = _png_to_luminance(png_path)
                 edges = _edge_pixels(img_width, img_height, lum)
                 for col, row in edges:
-                    if is_line_based:
-                        # Canonical line symbol local frame:
-                        # - origin at left endpoint
-                        # - +X along line direction
-                        # - points are type-canonical (not yet mirrored/rotated/translated to instance)
-                        x_rel = (float(col) / float(max(1, img_width))) * raster_world_width - pad
-                        y_rel = ((float(row) / float(max(1, img_height))) - 0.5) * raster_world_height
-                    else:
-                        # Canonical symbol-local point cache (type-local, pose-free representation).
-                        x_rel = ((float(col) / float(max(1, img_width))) - 0.5) * raster_world_width
-                        y_rel = ((float(row) / float(max(1, img_height))) - 0.5) * raster_world_height
+                    # Canonical symbol-local point cache (type-local, pose-free representation),
+                    # derived from canonical temporary-symbol bounds (not observed instance OBB).
+                    x_rel = raster_min_x + (float(col) / float(max(1, img_width))) * raster_world_width
+                    y_rel = raster_min_y + (float(row) / float(max(1, img_height))) * raster_world_height
                     points_xy_rel.append([x_rel, y_rel])
             except Exception as exc:
                 warnings.warn(
@@ -1004,6 +1066,7 @@ def _collect_points_for_element(view, doc, element, config):
             "doc_scope": doc_scope,
             "obb_width": obb_width,
             "obb_height": obb_height,
+            "canonical_bounds": canonical_bounds,
             "points": points_xy_rel,
             "pipeline_version": _SYMBOL_RASTER_PIPELINE_VERSION,
             "build_time_utc": datetime.now(timezone.utc).isoformat(),

@@ -1,4 +1,5 @@
 import importlib
+import os
 import sys
 import types
 
@@ -362,3 +363,79 @@ def test_collect_points_cache_hit_applies_point_rotation_and_mirror(monkeypatch)
 
     _elem_id, points = symbol_raster._collect_points_for_element(view, object(), elem, {})
     assert points == [[5.0, 5.0]]
+
+
+def test_cache_miss_uses_canonical_bounds_not_instance_obb(monkeypatch, tmp_path):
+    symbol_raster = _load_symbol_raster()
+    monkeypatch.setattr(symbol_raster, "_safe_type_sig_parts", lambda _e: ("Fam", "Type"))
+
+    class _Vec(object):
+        def __init__(self, x=0.0, y=0.0):
+            self.X = x
+            self.Y = y
+
+    class _Transform(object):
+        Origin = type("V", (), {"X": 0.0, "Y": 0.0, "Z": 0.0})()
+        BasisX = type("V", (), {"X": 1.0, "Y": 0.0, "Z": 0.0})()
+        Determinant = 1.0
+
+    class _BBox(object):
+        Min = _Vec(0.0, 0.0)
+        Max = _Vec(100.0, 50.0)  # Deliberately large instance OBB
+
+    class _Elem(object):
+        Symbol = object()
+
+        def GetTotalTransform(self):
+            return _Transform()
+
+        def get_BoundingBox(self, _view):
+            return _BBox()
+
+        def GetTypeId(self):
+            return type("TID", (), {"IntegerValue": 89})()
+
+    class _View(object):
+        Scale = 96
+        DetailLevel = 2
+        Document = type("D", (), {"PathName": "doc.rvt"})()
+        RightDirection = type("V", (), {"X": 1.0, "Y": 0.0, "Z": 0.0})()
+        UpDirection = type("V", (), {"X": 0.0, "Y": 1.0, "Z": 0.0})()
+        Origin = type("V", (), {"X": 0.0, "Y": 0.0, "Z": 0.0})()
+
+    src_png = tmp_path / "src.png"
+    src_png.write_bytes(b"png")
+    retained_png = tmp_path / "retained.png"
+    captured_entry = {}
+
+    monkeypatch.setattr(symbol_raster, "_safe_int_element_id", lambda _e: 11)
+    monkeypatch.setattr(symbol_raster, "_cache_file_path", lambda *_args, **_kwargs: "cache.json")
+    monkeypatch.setattr(symbol_raster, "_read_cache_entry", lambda _path: (None, "file not found"))
+    monkeypatch.setattr(symbol_raster, "_write_diag_json", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        symbol_raster,
+        "_instance_pose_in_view_2d",
+        lambda *_args, **_kwargs: ((0.0, 0.0), (1.0, 0.0), False, 0.0),
+    )
+    monkeypatch.setattr(
+        symbol_raster,
+        "_create_fresh_view_with_symbol",
+        lambda *_args, **_kwargs: (
+            object(),
+            {"min_x": 0.0, "max_x": 1.0, "min_y": 0.0, "max_y": 1.0},
+        ),
+    )
+    monkeypatch.setattr(symbol_raster, "_export_temp_view_png", lambda *_args, **_kwargs: (str(src_png), None))
+    monkeypatch.setattr(symbol_raster, "_retained_png_path", lambda *_args, **_kwargs: str(retained_png))
+    monkeypatch.setattr(symbol_raster, "_png_to_luminance", lambda *_args, **_kwargs: (10, 10, [0] * 100))
+    monkeypatch.setattr(symbol_raster, "_edge_pixels", lambda *_args, **_kwargs: [(0, 0)])
+    monkeypatch.setattr(symbol_raster, "_delete_temp_view", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(symbol_raster, "_cleanup_export_tmp_dir", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(symbol_raster, "_write_cache_entry", lambda _path, payload: captured_entry.update(payload))
+
+    _elem_id, points = symbol_raster._collect_points_for_element(_View(), object(), _Elem(), {})
+
+    assert os.path.exists(retained_png)
+    assert captured_entry["canonical_bounds"] == {"min_x": 0.0, "max_x": 1.0, "min_y": 0.0, "max_y": 1.0}
+    assert points and abs(points[0][0] + 0.25) < 1e-9
+    assert points and abs(points[0][1] + 0.25) < 1e-9
