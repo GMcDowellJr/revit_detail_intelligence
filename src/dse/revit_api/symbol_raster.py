@@ -551,7 +551,11 @@ def _create_fresh_view_with_symbol(doc, view, element):
             doc.Regenerate()
 
         return tmp_view
-    except Exception:
+    except Exception as exc:
+        _write_diag_json(
+            "fresh_view_create_failed",
+            {"reason": str(exc), "type": type(exc).__name__},
+        )
         if tmp_view is not None:
             try:
                 with scoped_transaction(doc, "DSE: cleanup failed symbol raster view"):
