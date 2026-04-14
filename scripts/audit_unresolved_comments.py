@@ -47,7 +47,8 @@ query($owner: String!, $name: String!, $cursor: String) {
         mergedAt
         url
         body
-        reviewThreads(first: 50) {
+        reviewThreads(first: 100) {
+          pageInfo { hasNextPage endCursor }
           nodes {
             isResolved
             path
@@ -59,6 +60,32 @@ query($owner: String!, $name: String!, $cursor: String) {
                 body
                 createdAt
               }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+"""
+
+# Used when a PR has more than 100 review threads (continuation pages).
+_THREADS_QUERY = """
+query($owner: String!, $name: String!, $number: Int!, $cursor: String!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      reviewThreads(first: 100, after: $cursor) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          isResolved
+          path
+          line
+          diffSide
+          comments(first: 1) {
+            nodes {
+              author { login }
+              body
+              createdAt
             }
           }
         }
@@ -103,6 +130,27 @@ def _graphql(token, query, variables=None):
 # ── Phase 1 — fetch merged PRs with unresolved threads ───────────────────────
 
 
+def _fetch_all_threads(token, pr_number, initial_nodes, initial_page_info):
+    """
+    Return the complete list of review-thread nodes for a PR, fetching
+    continuation pages when the initial batch has hasNextPage == True.
+    """
+    threads = list(initial_nodes)
+    page_info = initial_page_info
+
+    while page_info.get("hasNextPage"):
+        data = _graphql(
+            token,
+            _THREADS_QUERY,
+            {"owner": OWNER, "name": NAME, "number": pr_number, "cursor": page_info["endCursor"]},
+        )
+        thread_conn = data["repository"]["pullRequest"]["reviewThreads"]
+        threads.extend(thread_conn["nodes"])
+        page_info = thread_conn["pageInfo"]
+
+    return threads
+
+
 def fetch_merged_prs(token, since_dt):
     """
     Return a list of PR dicts, each with unresolved review threads, merged
@@ -133,7 +181,9 @@ def fetch_merged_prs(token, since_dt):
             if merged_at < since_dt:
                 continue
 
-            unresolved = [t for t in node["reviewThreads"]["nodes"] if not t["isResolved"]]
+            thread_conn = node["reviewThreads"]
+            all_threads = _fetch_all_threads(token, node["number"], thread_conn["nodes"], thread_conn["pageInfo"])
+            unresolved = [t for t in all_threads if not t["isResolved"]]
             if not unresolved:
                 continue
 
