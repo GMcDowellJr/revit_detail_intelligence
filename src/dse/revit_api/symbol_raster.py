@@ -5,6 +5,7 @@ import os
 import re
 import struct
 import tempfile
+import time
 import warnings
 import zlib
 from datetime import datetime, timezone
@@ -14,41 +15,25 @@ from dse.io_paths import ensure_dir
 from dse.revit_api.collect import get_view_elements, is_family_instance
 from dse.revit_api.geometry_2d import to_view_local_2d
 
-_DIAG_JSON_PATH = os.path.abspath(
-    os.path.join(r"C:\Temp\revit_detail_intelligence\cache", "symbol_raster_diagnostics.json")
-)
-_DIAG_ROWS_BUFFER = []
 _SYMBOL_RASTER_PIPELINE_VERSION = "symbol_raster.pipeline.v3"
 _CANONICAL_LINE_LENGTH_FT = 1.0  # 12 inches
 
 
-def _write_diag_json(event, payload):
-    row = {
-        "event": str(event),
-        "ts_utc": datetime.now(timezone.utc).isoformat(),
-        "payload": payload,
-    }
-    _DIAG_ROWS_BUFFER.append(row)
+def _emit_lookup_diagnostic(callback, payload):
+    if callback is None:
+        return
+    try:
+        callback(payload)
+    except Exception:
+        return
+
+
+def _write_diag_json(_event, _payload):
+    return
 
 
 def _flush_diag_json_buffer():
-    if not _DIAG_ROWS_BUFFER:
-        return
-    pending_rows = list(_DIAG_ROWS_BUFFER)
-    del _DIAG_ROWS_BUFFER[:]
-    try:
-        ensure_dir(os.path.dirname(_DIAG_JSON_PATH))
-        existing = []
-        if os.path.exists(_DIAG_JSON_PATH):
-            with open(_DIAG_JSON_PATH, "r", encoding="utf-8") as handle:
-                existing = json.load(handle)
-            if not isinstance(existing, list):
-                existing = []
-        existing.extend(pending_rows)
-        with open(_DIAG_JSON_PATH, "w", encoding="utf-8") as handle:
-            json.dump(existing, handle, indent=2, ensure_ascii=True)
-    except Exception:
-        _DIAG_ROWS_BUFFER[:0] = pending_rows
+    return
 
 
 def _safe_int_element_id(element):
@@ -835,7 +820,8 @@ def _delete_temp_view(doc, tmp_view):
         pass
 
 
-def _collect_points_for_element(view, doc, element, config):
+def _collect_points_for_element(view, doc, element, config, diagnostic_callback=None):
+    lookup_start = time.perf_counter()
     elem_id = _safe_int_element_id(element)
     family_name, _ = _safe_type_sig_parts(element)
 
@@ -879,18 +865,6 @@ def _collect_points_for_element(view, doc, element, config):
         return None, None
 
     cache_path = _cache_file_path(config, family_name, cache_key)
-    lookup_diag = _cache_lookup_diag_payload(
-        cache_key=cache_key,
-        cache_path=cache_path,
-        doc_scope=doc_scope,
-        family_name=family_name,
-        type_name=type_name,
-        type_id_int=type_id_int,
-        view_scale=view_scale,
-        detail_level=detail_level,
-        is_line_based=is_line_based,
-    )
-    _write_diag_json("cache_lookup_started", lookup_diag)
     cached, miss_reason = _read_cache_entry(cache_path)
     expected_entry = {
         "cache_key": cache_key,
@@ -902,19 +876,18 @@ def _collect_points_for_element(view, doc, element, config):
     }
     actual_length_ft = _actual_instance_length_ft(element, obb_width=obb_width, obb_height=obb_height)
     length_scale_x = (actual_length_ft / _CANONICAL_LINE_LENGTH_FT) if is_line_based else 1.0
-    transform_diag = {
-        "canonical_length_ft": float(_CANONICAL_LINE_LENGTH_FT) if is_line_based else None,
-        "actual_length_ft": float(actual_length_ft) if is_line_based else None,
-        "length_scale_x": float(length_scale_x),
-        "rotation_deg": float(rotation_deg),
-        "mirrored": bool(is_mirrored),
-        "is_line_based": bool(is_line_based),
-    }
     if miss_reason is None:
         cached_points, miss_reason = _validate_cache_entry(cached, expected_entry)
         if miss_reason is None:
-            _write_diag_json("cache_hit", lookup_diag)
-            _write_diag_json("instance_transform_applied", dict(lookup_diag, **transform_diag))
+            _emit_lookup_diagnostic(
+                diagnostic_callback,
+                {
+                    "symbol_type_key": "{}|{}".format(family_name, type_name),
+                    "cache_hit": True,
+                    "miss_reason": None,
+                    "elapsed_ms": (time.perf_counter() - lookup_start) * 1000.0,
+                },
+            )
             return elem_id, _apply_canonical_instance_transform(
                 cached_points,
                 placement_point=placement_point,
@@ -922,8 +895,7 @@ def _collect_points_for_element(view, doc, element, config):
                 mirrored=is_mirrored,
                 length_scale_x=length_scale_x,
             )
-    _write_diag_json("cache_miss_reason", dict(lookup_diag, reason=str(miss_reason or "unknown")))
-    _write_diag_json("cache_miss", lookup_diag)
+    miss_reason = str(miss_reason or "unknown")
 
     if obb_width <= 0.0 or obb_height <= 0.0:
         entry = {
@@ -941,6 +913,15 @@ def _collect_points_for_element(view, doc, element, config):
             "build_time_utc": datetime.now(timezone.utc).isoformat(),
         }
         _write_cache_entry(cache_path, entry)
+        _emit_lookup_diagnostic(
+            diagnostic_callback,
+            {
+                "symbol_type_key": "{}|{}".format(family_name, type_name),
+                "cache_hit": False,
+                "miss_reason": miss_reason,
+                "elapsed_ms": (time.perf_counter() - lookup_start) * 1000.0,
+            },
+        )
         return elem_id, []
 
     tmp_view = None
@@ -962,13 +943,6 @@ def _collect_points_for_element(view, doc, element, config):
         else:
             # Backward compatibility for test stubs that still return only a view-like object.
             tmp_view = tmp_view_result
-        _write_diag_json(
-            "fresh_view_created",
-            {
-                "tmp_view_is_none": tmp_view is None,
-                "tmp_view_id": _safe_int_element_id(tmp_view) if tmp_view is not None else None,
-            },
-        )
         if tmp_view is None:
             raise RuntimeError("failed to duplicate/isolate temporary view")
         dpi = int(config.get("symbol_raster_dpi", 150))
@@ -979,10 +953,6 @@ def _collect_points_for_element(view, doc, element, config):
                 blob = src.read()
             with open(retained_png_path, "wb") as dst:
                 dst.write(blob)
-            _write_diag_json(
-                "retained_export_png",
-                {"source": png_path, "retained": retained_png_path, "size_bytes": int(len(blob))},
-            )
             png_path = retained_png_path
     except Exception as exc:
         warnings.warn(
@@ -1054,8 +1024,6 @@ def _collect_points_for_element(view, doc, element, config):
             mirrored=is_mirrored,
             length_scale_x=length_scale_x,
         )
-        _write_diag_json("instance_transform_applied", dict(lookup_diag, **transform_diag))
-
         entry = {
             "cache_schema": "symbol_raster.v1",
             "cache_key": cache_key,
@@ -1072,12 +1040,21 @@ def _collect_points_for_element(view, doc, element, config):
             "build_time_utc": datetime.now(timezone.utc).isoformat(),
         }
         _write_cache_entry(cache_path, entry)
+        _emit_lookup_diagnostic(
+            diagnostic_callback,
+            {
+                "symbol_type_key": "{}|{}".format(family_name, type_name),
+                "cache_hit": False,
+                "miss_reason": miss_reason,
+                "elapsed_ms": (time.perf_counter() - lookup_start) * 1000.0,
+            },
+        )
         return elem_id, points_xy
     finally:
         _cleanup_export_tmp_dir(export_tmp_dir)
 
 
-def collect_raster_points_for_view(view, doc=None, config=None):
+def collect_raster_points_for_view(view, doc=None, config=None, diagnostic_callback=None):
     """Collect view-local raster edge points for FamilyInstance elements.
 
     Returns: {element_id_int: [[x, y], ...]}
@@ -1086,40 +1063,39 @@ def collect_raster_points_for_view(view, doc=None, config=None):
     out = {}
     config = config or {}
     doc = doc or getattr(view, "Document", None)
-    try:
-        if view is None or doc is None:
-            return out
+    if view is None or doc is None:
+        return out
 
+    try:
+        elements = get_view_elements(view)
+    except Exception as exc:
+        warnings.warn(
+            "DSE: symbol raster failed to read view elements: {}".format(exc),
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return out
+
+    for element in elements:
         try:
-            elements = get_view_elements(view)
+            if not is_family_instance(element):
+                continue
+            elem_id, points = _collect_points_for_element(
+                view, doc, element, config, diagnostic_callback=diagnostic_callback
+            )
+            if elem_id is None:
+                continue
+            out[int(elem_id)] = points or []
         except Exception as exc:
+            elem_id = _safe_int_element_id(element)
+            fam_name, _ = _safe_type_sig_parts(element)
             warnings.warn(
-                "DSE: symbol raster failed to read view elements: {}".format(exc),
+                "DSE: symbol raster unexpected failure for element {} ({}) : {}".format(
+                    elem_id, fam_name, exc
+                ),
                 RuntimeWarning,
                 stacklevel=2,
             )
-            return out
+            continue
 
-        for element in elements:
-            try:
-                if not is_family_instance(element):
-                    continue
-                elem_id, points = _collect_points_for_element(view, doc, element, config)
-                if elem_id is None:
-                    continue
-                out[int(elem_id)] = points or []
-            except Exception as exc:
-                elem_id = _safe_int_element_id(element)
-                fam_name, _ = _safe_type_sig_parts(element)
-                warnings.warn(
-                    "DSE: symbol raster unexpected failure for element {} ({}) : {}".format(
-                        elem_id, fam_name, exc
-                    ),
-                    RuntimeWarning,
-                    stacklevel=2,
-                )
-                continue
-
-        return out
-    finally:
-        _flush_diag_json_buffer()
+    return out

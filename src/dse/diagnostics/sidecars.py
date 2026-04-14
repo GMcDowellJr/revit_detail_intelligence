@@ -8,7 +8,7 @@ from dse.config import CONFIG
 from dse.io_paths import resolve_cache_root
 
 SEARCH_SIDECAR_SCHEMA = "sidecar.search.1.0"
-INDEX_SIDECAR_SCHEMA = "sidecar.index.1.0"
+INDEX_SIDECAR_SCHEMA = "sidecar.index.1.1"
 
 
 def percentile(sorted_values, p):
@@ -35,6 +35,7 @@ def distribution_stats(values):
             "p25": None,
             "p50": None,
             "p75": None,
+            "p95": None,
         }
     sorted_values = sorted(float(value) for value in values)
     count = len(sorted_values)
@@ -46,6 +47,7 @@ def distribution_stats(values):
         "p25": float(percentile(sorted_values, 0.25)),
         "p50": float(percentile(sorted_values, 0.50)),
         "p75": float(percentile(sorted_values, 0.75)),
+        "p95": float(percentile(sorted_values, 0.95)),
     }
 
 
@@ -84,6 +86,17 @@ class IndexDiagnosticAccumulator:
         self.kind_breakdown = {}
         self.source_docs = set()
         self._symbol_counts = {}
+        self._symbol_raster_total = 0
+        self._symbol_raster_hits = 0
+        self._symbol_raster_misses = 0
+        self._symbol_raster_miss_reasons = {}
+        self._symbol_raster_hit_ms = []
+        self._symbol_raster_miss_ms = []
+        self._symbol_raster_types_seen = set()
+        self._symbol_raster_types_hit = set()
+        self._symbol_raster_types_miss = set()
+        self._view_extraction_ms = []
+        self._view_extraction_rows = []
 
     def accumulate(self, bundle, cache_status):
         self.count_total += 1
@@ -131,6 +144,31 @@ class IndexDiagnosticAccumulator:
         self.count_cache_statuses[str(cache_status)] = self.count_cache_statuses.get(str(cache_status), 0) + 1
         view_kind = str(features.view_kind)
         self.kind_breakdown[view_kind] = self.kind_breakdown.get(view_kind, 0) + 1
+
+    def accumulate_symbol_raster_lookup(self, lookup):
+        self._symbol_raster_total += 1
+        symbol_type_key = str(lookup.get("symbol_type_key", "<unknown-symbol>"))
+        self._symbol_raster_types_seen.add(symbol_type_key)
+        was_hit = bool(lookup.get("cache_hit", False))
+        elapsed_ms = float(lookup.get("elapsed_ms", 0.0))
+        if was_hit:
+            self._symbol_raster_hits += 1
+            self._symbol_raster_hit_ms.append(elapsed_ms)
+            self._symbol_raster_types_hit.add(symbol_type_key)
+            return
+
+        self._symbol_raster_misses += 1
+        self._symbol_raster_miss_ms.append(elapsed_ms)
+        self._symbol_raster_types_miss.add(symbol_type_key)
+        reason = str(lookup.get("miss_reason", "unknown"))
+        self._symbol_raster_miss_reasons[reason] = self._symbol_raster_miss_reasons.get(reason, 0) + 1
+
+    def accumulate_view_timing(self, view_id, display_name, extraction_ms):
+        duration = float(extraction_ms)
+        self._view_extraction_ms.append(duration)
+        self._view_extraction_rows.append(
+            {"view_id": int(view_id), "display_name": str(display_name), "ms": duration}
+        )
 
     def accumulate_error(self, view_id, view_name, error):
         self.count_total += 1
@@ -184,6 +222,10 @@ class IndexDiagnosticAccumulator:
             for row in self.view_records
             if row.get("symbol_count") is not None and row["symbol_count"] > 0
         )
+        symbol_hit_stats = distribution_stats(self._symbol_raster_hit_ms)
+        symbol_miss_stats = distribution_stats(self._symbol_raster_miss_ms)
+        view_stats = distribution_stats(self._view_extraction_ms)
+        slowest_views = sorted(self._view_extraction_rows, key=lambda row: (-float(row["ms"]), row["view_id"]))[:5]
 
         return {
             "schema_version": self.schema_version,
@@ -234,6 +276,39 @@ class IndexDiagnosticAccumulator:
             },
             "cache_health": {
                 "cache_statuses": dict(sorted(self.count_cache_statuses.items())),
+            },
+            "symbol_raster_summary": {
+                "lookups_total": self._symbol_raster_total,
+                "hit_count": self._symbol_raster_hits,
+                "miss_count": self._symbol_raster_misses,
+                "hit_rate": 0.0
+                if self._symbol_raster_total <= 0
+                else float(self._symbol_raster_hits) / float(self._symbol_raster_total),
+                "miss_reasons": dict(sorted(self._symbol_raster_miss_reasons.items())),
+                "hit_timing_ms": {
+                    "min": symbol_hit_stats["min"],
+                    "max": symbol_hit_stats["max"],
+                    "mean": symbol_hit_stats["mean"],
+                    "p50": symbol_hit_stats["p50"],
+                    "p95": symbol_hit_stats["p95"],
+                },
+                "miss_timing_ms": {
+                    "min": symbol_miss_stats["min"],
+                    "max": symbol_miss_stats["max"],
+                    "mean": symbol_miss_stats["mean"],
+                    "p50": symbol_miss_stats["p50"],
+                    "p95": symbol_miss_stats["p95"],
+                },
+                "unique_symbol_types_total": len(self._symbol_raster_types_seen),
+                "unique_symbol_types_hit": len(self._symbol_raster_types_hit),
+                "unique_symbol_types_miss": len(self._symbol_raster_types_miss),
+            },
+            "timing": {
+                "total_elapsed_ms": float(sum(self._view_extraction_ms)),
+                "mean_view_ms": view_stats["mean"],
+                "p50_view_ms": view_stats["p50"],
+                "p95_view_ms": view_stats["p95"],
+                "slowest_views": slowest_views,
             },
             "flag_summary": {
                 "views_flagged": len(flagged_rows),

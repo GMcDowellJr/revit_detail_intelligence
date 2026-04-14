@@ -90,7 +90,7 @@ def test_write_json_sidecar_is_atomic_and_valid_json(tmp_path):
 
 def test_distribution_stats_non_empty_and_empty():
     stats = distribution_stats([1.0, 2.0, 3.0, 4.0])
-    assert set(stats.keys()) == {"count", "min", "max", "mean", "p25", "p50", "p75"}
+    assert set(stats.keys()) == {"count", "min", "max", "mean", "p25", "p50", "p75", "p95"}
     assert stats["count"] == 4
     assert stats["mean"] == 2.5
 
@@ -102,6 +102,7 @@ def test_distribution_stats_non_empty_and_empty():
     assert empty["p25"] is None
     assert empty["p50"] is None
     assert empty["p75"] is None
+    assert empty["p95"] is None
 
 
 def test_index_diagnostic_accumulator_finalize_with_flags_and_stopwords():
@@ -117,6 +118,19 @@ def test_index_diagnostic_accumulator_finalize_with_flags_and_stopwords():
         ),
         "rebuilt",
     )
+    accum.accumulate_symbol_raster_lookup(
+        {"symbol_type_key": "Door|Single", "cache_hit": True, "miss_reason": None, "elapsed_ms": 1.2}
+    )
+    accum.accumulate_symbol_raster_lookup(
+        {
+            "symbol_type_key": "Tag|A",
+            "cache_hit": False,
+            "miss_reason": "file not found",
+            "elapsed_ms": 6.5,
+        }
+    )
+    accum.accumulate_view_timing(1, "Zero", 12.0)
+    accum.accumulate_view_timing(2, "Sparse", 22.0)
     accum.accumulate(
         _bundle(
             2,
@@ -142,6 +156,10 @@ def test_index_diagnostic_accumulator_finalize_with_flags_and_stopwords():
     assert "zero_tokens" in flagged[1]
     assert "empty_fingerprint" in flagged[1]
     assert payload["symbol_coverage"]["top_10_most_common_symbols"][0] == ["door", 5]
+    assert payload["symbol_raster_summary"]["lookups_total"] == 2
+    assert payload["symbol_raster_summary"]["miss_reasons"] == {"file not found": 1}
+    assert payload["timing"]["slowest_views"][0]["view_id"] == 2
+    assert payload["timing"]["mean_view_ms"] == 17.0
 
 
 def test_search_diagnostic_builder_builds_schema_and_tiers():
@@ -195,7 +213,11 @@ def test_extract_bundle_with_cache_returns_tuple(monkeypatch):
 
     bundle = _bundle(42)
 
-    monkeypatch.setattr(search, "_build_state_context", lambda _view: {"state_hash": "abc"})
+    monkeypatch.setattr(
+        search,
+        "_build_state_context",
+        lambda _view, symbol_raster_lookup_callback=None: {"state_hash": "abc"},
+    )
     monkeypatch.setattr(search, "resolve_view_cache_root", lambda _cfg: "/tmp/cache")
     monkeypatch.setattr(
         search,
