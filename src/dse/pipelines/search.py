@@ -1,5 +1,4 @@
 import hashlib
-import inspect
 import json
 import math
 import os
@@ -732,17 +731,6 @@ def _load_all_cached_bundles(cache_root):
 
 
 def _extract_bundle_for_index(view, symbol_raster_lookup_callback=None):
-    try:
-        sig = inspect.signature(_extract_bundle_with_cache)
-    except Exception:
-        sig = None
-    kwargs = {}
-    if sig is not None and "write_legacy_cache_record" in sig.parameters:
-        kwargs["write_legacy_cache_record"] = False
-    if sig is not None and "symbol_raster_lookup_callback" in sig.parameters:
-        kwargs["symbol_raster_lookup_callback"] = symbol_raster_lookup_callback
-    if kwargs:
-        return _extract_bundle_with_cache(view, **kwargs)
     return _extract_bundle_with_cache(view)
 
 def index_views(views):

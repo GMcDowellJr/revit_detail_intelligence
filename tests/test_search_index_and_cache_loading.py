@@ -2,7 +2,12 @@ import os
 import sys
 import types
 
-from dse.cache.view_feature_cache import ViewFeatureCacheEntry, serialize_cache_entry
+from dse.cache.view_feature_cache import (
+    ViewFeatureCache,
+    ViewFeatureCacheEntry,
+    get_cached_bundle_with_diagnostics,
+    serialize_cache_entry,
+)
 from dse.models import ViewFeatureBundle, ViewPresentationSummary, ViewSearchFeatures, ViewStateSignature
 from dse.config import CONFIG
 
@@ -187,26 +192,68 @@ def test_index_views_counts_preview_failures_when_generate_returns_none(monkeypa
     assert summary["preview_failures"] == 2
 
 
-def test_extract_bundle_for_index_legacy_signature_compatibility(monkeypatch):
+def test_extract_bundle_for_index_delegates_without_compat_shim(monkeypatch):
     class FakeId(object):
         IntegerValue = 31
 
     class FakeView(object):
         Id = FakeId()
 
+    calls = []
+
+    def fake_extract(view, write_legacy_cache_record=True, symbol_raster_lookup_callback=None):
+        calls.append((write_legacy_cache_record, symbol_raster_lookup_callback))
+        return _bundle(view.Id.IntegerValue), "rebuilt"
+
     monkeypatch.setattr(
         search,
         "_extract_bundle_with_cache",
-        lambda view: (_bundle(view.Id.IntegerValue), "rebuilt"),
+        fake_extract,
     )
 
-    bundle, status = search._extract_bundle_for_index(
-        FakeView(),
-        symbol_raster_lookup_callback=lambda _row: None,
-    )
+    callback = lambda _row: None
+    bundle, status = search._extract_bundle_for_index(FakeView(), symbol_raster_lookup_callback=callback)
 
     assert bundle.search_features.view_id == 31
     assert status == "rebuilt"
+    assert calls == [(True, None)]
+
+
+def test_index_views_writes_legacy_cache_entry_that_hits_disk(monkeypatch, tmp_path):
+    class FakeId(object):
+        def __init__(self, value):
+            self.IntegerValue = value
+
+    class FakeView(object):
+        def __init__(self, value):
+            self.Id = FakeId(value)
+
+    cache_root = str(tmp_path / "cache")
+    monkeypatch.setattr(search, "is_view", lambda value: hasattr(value, "Id"))
+    monkeypatch.setattr(search, "resolve_view_cache_root", lambda _cfg: cache_root)
+    monkeypatch.setattr(search, "extract_feature_bundle", lambda view, state_ctx=None: _bundle(view.Id.IntegerValue))
+    monkeypatch.setattr(search, "_build_state_context", lambda *_args, **_kwargs: {"state_hash": "s1"})
+    monkeypatch.setattr(search, "generate_and_cache_view_preview", lambda *_args, **_kwargs: "preview.png")
+
+    summary = search.index_views([FakeView(1)])
+    assert summary["indexed"] == 1
+
+    legacy_cache_path = tmp_path / "cache" / "view_features" / "view_1.json"
+    assert legacy_cache_path.exists()
+
+    fresh_cache = ViewFeatureCache()
+    cached, status = get_cached_bundle_with_diagnostics(
+        in_memory_cache=fresh_cache,
+        cache_root=cache_root,
+        view_id=1,
+        state_hash="s1",
+        pipeline_version=CONFIG["pipeline_version"],
+        schema_version=search.SEARCH_SCHEMA_VERSION,
+    )
+    assert status == "hit_disk"
+    assert cached is not None
+    assert cached.search_features.view_id == 1
+    assert cached.state_signature.state_hash == "s1"
 
 
 def test_load_all_cached_bundles_empty_dir(tmp_path):
