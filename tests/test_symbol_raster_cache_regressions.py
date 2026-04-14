@@ -438,4 +438,4 @@ def test_cache_miss_uses_canonical_bounds_not_instance_obb(monkeypatch, tmp_path
     assert os.path.exists(retained_png)
     assert captured_entry["canonical_bounds"] == {"min_x": 0.0, "max_x": 1.0, "min_y": 0.0, "max_y": 1.0}
     assert points and abs(points[0][0] + 0.25) < 1e-9
-    assert points and abs(points[0][1] + 0.25) < 1e-9
+    assert points and abs(points[0][1] - 1.25) < 1e-9

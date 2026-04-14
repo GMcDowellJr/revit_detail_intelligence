@@ -1034,7 +1034,7 @@ def _collect_points_for_element(view, doc, element, config):
                     # Canonical symbol-local point cache (type-local, pose-free representation),
                     # derived from canonical temporary-symbol bounds (not observed instance OBB).
                     x_rel = raster_min_x + (float(col) / float(max(1, img_width))) * raster_world_width
-                    y_rel = (0.5 - (float(row) / float(max(1, img_height)))) * raster_world_height
+                    y_rel = raster_min_y + (1.0 - (float(row) / float(max(1, img_height)))) * raster_world_height
                     points_xy_rel.append([x_rel, y_rel])
             except Exception as exc:
                 warnings.warn(
