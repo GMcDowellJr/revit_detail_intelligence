@@ -510,6 +510,7 @@ def _get_drafting_view_family_type_id(doc):
 def _create_fresh_view_with_symbol(doc, view, element):
     tmp_view = None
     tmp_inst = None
+    symbol = None
     try:
         import clr
 
@@ -552,9 +553,18 @@ def _create_fresh_view_with_symbol(doc, view, element):
 
         return tmp_view
     except Exception as exc:
+        try:
+            family = getattr(symbol, "Family", None)
+            pt = str(getattr(family, "FamilyPlacementType", "unknown")) if family else "no_family"
+        except Exception:
+            pt = "error_reading"
         _write_diag_json(
             "fresh_view_create_failed",
-            {"reason": str(exc), "type": type(exc).__name__},
+            {
+                "reason": str(exc),
+                "type": type(exc).__name__,
+                "family_placement_type": pt,
+            },
         )
         if tmp_view is not None:
             try:
