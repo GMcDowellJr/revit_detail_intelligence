@@ -110,11 +110,27 @@ def _symbol_cache_key(element, view, obb_width=0.0, obb_height=0.0):
     doc_identity = _document_identity(getattr(view, "Document", None))
     doc_scope = hashlib.sha1(doc_identity.encode("utf-8")).hexdigest()[:12]
     length_bucket_in = int(math.ceil(max(obb_width, obb_height) * 12.0))
-    # Cache schema note: detail_level and length_bucket_in were added to the key. Existing
-    # symbol_rasters caches built without these fields are intentionally invalidated and will
-    # rebuild on misses.
-    key = "{}|{}|{}|{}|{}|{}|{}in".format(
-        doc_scope, family_name, type_name, view_scale, detail_level, orientation_bucket, length_bucket_in
+    # Stable type-id disambiguates Symbol-less instances (line-based families resolved via
+    # GetTypeId) that share a placeholder family name, preventing cross-family cache collisions.
+    type_id_int = 0
+    try:
+        raw_type_id = element.GetTypeId()
+        if raw_type_id is not None:
+            try:
+                type_id_int = int(raw_type_id.Value)
+            except Exception:
+                try:
+                    type_id_int = int(raw_type_id.IntegerValue)
+                except Exception:
+                    type_id_int = 0
+    except Exception:
+        type_id_int = 0
+    # Cache schema note: detail_level, length_bucket_in, and type_id_int were added to the key.
+    # Existing symbol_rasters caches built without these fields are intentionally invalidated
+    # and will rebuild on misses.
+    key = "{}|{}|{}|{}|{}|{}|{}in|tid{}".format(
+        doc_scope, family_name, type_name, view_scale, detail_level, orientation_bucket,
+        length_bucket_in, type_id_int
     )
     return key, family_name, type_name, view_scale, detail_level, orientation_bucket, doc_scope, length_bucket_in
 
@@ -550,12 +566,24 @@ def _create_fresh_view_with_symbol(doc, view, element, obb_width=0.0, obb_height
             try:
                 tmp_inst = doc.Create.NewFamilyInstance(XYZ(0, 0, 0), symbol, tmp_view)
             except Exception:
-                # Fall back to curve overload for line-based families
+                # Fall back to curve overload for line-based families.
+                # Orient the driving line along the element's actual BasisX so the rasterized
+                # geometry matches the real instance direction in the view.
                 from Autodesk.Revit.DB import Line
 
                 length_ft = max(obb_width, obb_height)
                 length_ft = max(length_ft, 1.0 / 12.0)  # minimum 1 inch
-                end_pt = XYZ(length_ft, 0, 0)
+                dx, dy = 1.0, 0.0
+                try:
+                    tx = element.GetTotalTransform()
+                    bx = tx.BasisX
+                    raw_dx, raw_dy = float(bx.X), float(bx.Y)
+                    norm = math.sqrt(raw_dx * raw_dx + raw_dy * raw_dy)
+                    if norm > 1e-9:
+                        dx, dy = raw_dx / norm, raw_dy / norm
+                except Exception:
+                    pass
+                end_pt = XYZ(dx * length_ft, dy * length_ft, 0.0)
                 line = Line.CreateBound(XYZ(0, 0, 0), end_pt)
                 tmp_inst = doc.Create.NewFamilyInstance(line, symbol, tmp_view)
                 _write_diag_json(
@@ -563,6 +591,8 @@ def _create_fresh_view_with_symbol(doc, view, element, obb_width=0.0, obb_height
                     {
                         "element_id": _safe_int_element_id(element),
                         "length_ft": length_ft,
+                        "dx": dx,
+                        "dy": dy,
                         "family_name": str(getattr(getattr(symbol, "Family", None), "Name", "unknown")),
                     },
                 )
