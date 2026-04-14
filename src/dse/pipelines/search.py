@@ -4,6 +4,7 @@ import json
 import math
 import os
 import random
+import time
 
 import warnings
 from dse.cache.view_feature_cache import (
@@ -261,12 +262,13 @@ def _layout_graph_features(view, elements, element_curves=None):
     }
 
 
-def _build_state_context(view):
+def _build_state_context(view, symbol_raster_lookup_callback=None):
     all_elements = get_view_elements(view)
     raster_symbol_points = symbol_raster.collect_raster_points_for_view(
         view=view,
         doc=getattr(view, "Document", None),
         config=CONFIG,
+        diagnostic_callback=symbol_raster_lookup_callback,
     )
     total_family_instances = sum(1 for elem in all_elements if is_family_instance(elem))
     covered_instance_ids = {
@@ -615,8 +617,8 @@ def extract_features(view):
     return legacy_view_features_from_search(bundle.search_features)
 
 
-def _extract_bundle_with_cache(view, write_legacy_cache_record=True):
-    state_ctx = _build_state_context(view)
+def _extract_bundle_with_cache(view, write_legacy_cache_record=True, symbol_raster_lookup_callback=None):
+    state_ctx = _build_state_context(view, symbol_raster_lookup_callback=symbol_raster_lookup_callback)
     cache_root = resolve_view_cache_root(CONFIG)
     cached, status = get_cached_bundle_with_diagnostics(
         in_memory_cache=GLOBAL_VIEW_FEATURE_CACHE,
@@ -729,13 +731,18 @@ def _load_all_cached_bundles(cache_root):
 
 
 
-def _extract_bundle_for_index(view):
+def _extract_bundle_for_index(view, symbol_raster_lookup_callback=None):
     try:
         sig = inspect.signature(_extract_bundle_with_cache)
     except Exception:
         sig = None
+    kwargs = {}
     if sig is not None and "write_legacy_cache_record" in sig.parameters:
-        return _extract_bundle_with_cache(view, write_legacy_cache_record=False)
+        kwargs["write_legacy_cache_record"] = False
+    if sig is not None and "symbol_raster_lookup_callback" in sig.parameters:
+        kwargs["symbol_raster_lookup_callback"] = symbol_raster_lookup_callback
+    if kwargs:
+        return _extract_bundle_with_cache(view, **kwargs)
     return _extract_bundle_with_cache(view)
 
 def index_views(views):
@@ -750,11 +757,22 @@ def index_views(views):
         if not is_view(view):
             skipped += 1
             continue
+        extraction_start = time.perf_counter()
         try:
-            bundle, status = _extract_bundle_for_index(view)
+            bundle, status = _extract_bundle_for_index(
+                view,
+                symbol_raster_lookup_callback=accum.accumulate_symbol_raster_lookup,
+            )
         except Exception as exc:
             accum.accumulate_error(getattr(getattr(view, "Id", None), "IntegerValue", None), view_label(view), str(exc))
             raise
+        extraction_ms = (time.perf_counter() - extraction_start) * 1000.0
+        bundle.presentation_summary.debug["extraction_ms"] = extraction_ms
+        accum.accumulate_view_timing(
+            bundle.search_features.view_id,
+            bundle.presentation_summary.display_name,
+            extraction_ms,
+        )
         accum.accumulate(bundle, status)
         _write_doc_scoped_cache_record(cache_root, bundle)
         try:

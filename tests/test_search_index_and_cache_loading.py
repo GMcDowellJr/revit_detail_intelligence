@@ -187,6 +187,28 @@ def test_index_views_counts_preview_failures_when_generate_returns_none(monkeypa
     assert summary["preview_failures"] == 2
 
 
+def test_extract_bundle_for_index_legacy_signature_compatibility(monkeypatch):
+    class FakeId(object):
+        IntegerValue = 31
+
+    class FakeView(object):
+        Id = FakeId()
+
+    monkeypatch.setattr(
+        search,
+        "_extract_bundle_with_cache",
+        lambda view: (_bundle(view.Id.IntegerValue), "rebuilt"),
+    )
+
+    bundle, status = search._extract_bundle_for_index(
+        FakeView(),
+        symbol_raster_lookup_callback=lambda _row: None,
+    )
+
+    assert bundle.search_features.view_id == 31
+    assert status == "rebuilt"
+
+
 def test_load_all_cached_bundles_empty_dir(tmp_path):
     cache_root = str(tmp_path / "cache")
     os.makedirs(os.path.join(cache_root, "view_features"), exist_ok=True)
