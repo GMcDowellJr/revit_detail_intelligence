@@ -66,7 +66,11 @@ def test_repeated_same_key_call_uses_cache_without_fresh_view(monkeypatch):
         "_read_cache_entry",
         lambda path: (cache_store[path], None) if path in cache_store else (None, "file not found"),
     )
-    monkeypatch.setattr(symbol_raster, "_write_cache_entry", lambda path, payload: cache_store.__setitem__(path, payload))
+    monkeypatch.setattr(
+        symbol_raster,
+        "_write_cache_entry",
+        lambda path, payload: cache_store.__setitem__(path, payload),
+    )
     monkeypatch.setattr(symbol_raster, "_export_temp_view_png", lambda *_args, **_kwargs: (None, None))
     monkeypatch.setattr(symbol_raster, "_cleanup_export_tmp_dir", lambda _tmp: None)
     monkeypatch.setattr(symbol_raster, "_delete_temp_view", lambda *_args, **_kwargs: None)
