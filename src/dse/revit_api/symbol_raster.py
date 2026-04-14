@@ -567,8 +567,10 @@ def _create_fresh_view_with_symbol(doc, view, element, obb_width=0.0, obb_height
                 tmp_inst = doc.Create.NewFamilyInstance(XYZ(0, 0, 0), symbol, tmp_view)
             except Exception:
                 # Fall back to curve overload for line-based families.
-                # Orient the driving line along the element's actual BasisX so the rasterized
-                # geometry matches the real instance direction in the view.
+                # Project the element's world-space BasisX onto the source view's RightDirection
+                # and UpDirection axes so the driving line is view-relative, not a raw XY world
+                # projection. This handles section/elevation views where the driving direction
+                # has a significant Z component that the plain bx.X/bx.Y path would drop.
                 from Autodesk.Revit.DB import Line
 
                 length_ft = max(obb_width, obb_height)
@@ -577,7 +579,18 @@ def _create_fresh_view_with_symbol(doc, view, element, obb_width=0.0, obb_height
                 try:
                     tx = element.GetTotalTransform()
                     bx = tx.BasisX
-                    raw_dx, raw_dy = float(bx.X), float(bx.Y)
+                    right = view.RightDirection
+                    up = view.UpDirection
+                    raw_dx = (
+                        float(bx.X) * float(right.X)
+                        + float(bx.Y) * float(right.Y)
+                        + float(bx.Z) * float(right.Z)
+                    )
+                    raw_dy = (
+                        float(bx.X) * float(up.X)
+                        + float(bx.Y) * float(up.Y)
+                        + float(bx.Z) * float(up.Z)
+                    )
                     norm = math.sqrt(raw_dx * raw_dx + raw_dy * raw_dy)
                     if norm > 1e-9:
                         dx, dy = raw_dx / norm, raw_dy / norm
