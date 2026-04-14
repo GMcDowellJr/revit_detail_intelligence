@@ -89,3 +89,126 @@ def test_collect_raster_points_flushes_diagnostics_once(monkeypatch):
 
     assert out == {}
     assert calls["flush"] == 1
+
+
+def test_collect_points_emits_cache_lookup_diagnostics(monkeypatch):
+    symbol_raster = _load_symbol_raster()
+    events = []
+
+    class _Vec(object):
+        def __init__(self, x=0.0, y=0.0):
+            self.X = x
+            self.Y = y
+
+    class _Transform(object):
+        Origin = _Vec(0.0, 0.0)
+        BasisX = _Vec(1.0, 0.0)
+        Determinant = 1.0
+
+    class _BBox(object):
+        Min = _Vec(0.0, 0.0)
+        Max = _Vec(1.0, 1.0)
+
+    class _Elem(object):
+        Symbol = object()
+
+        def GetTotalTransform(self):
+            return _Transform()
+
+        def get_BoundingBox(self, _view):
+            return _BBox()
+
+        def GetTypeId(self):
+            return type("TID", (), {"IntegerValue": 42})()
+
+    class _View(object):
+        Scale = 100
+        DetailLevel = 2
+        Document = type("D", (), {"PathName": "doc.rvt"})()
+
+    monkeypatch.setattr(symbol_raster, "_safe_int_element_id", lambda _e: 99)
+    monkeypatch.setattr(symbol_raster, "_safe_type_sig_parts", lambda _e: ("Fam", "Type"))
+    monkeypatch.setattr(symbol_raster, "to_view_local_2d", lambda pts, _view: [[0.0, 0.0] for _ in pts])
+    monkeypatch.setattr(symbol_raster, "_cache_file_path", lambda _cfg, _fam, _key: "/tmp/cache.json")
+    monkeypatch.setattr(symbol_raster, "_read_cache_entry", lambda _path: (None, "file not found"))
+    monkeypatch.setattr(symbol_raster, "_create_fresh_view_with_symbol", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(symbol_raster, "_write_diag_json", lambda event, payload: events.append((event, payload)))
+
+    elem_id, points = symbol_raster._collect_points_for_element(_View(), object(), _Elem(), {})
+
+    assert elem_id is None
+    assert points is None
+    assert [event for event, _ in events[:3]] == [
+        "cache_lookup_started",
+        "cache_miss_reason",
+        "cache_miss",
+    ]
+    payload = events[0][1]
+    assert payload["cache_key"]
+    assert payload["cache_path"] == "/tmp/cache.json"
+    assert payload["doc_scope"]
+    assert payload["family_name"] == "Fam"
+    assert payload["type_name"] == "Type"
+    assert payload["type_id_int"] == 42
+    assert payload["view_scale"] == 100
+
+
+def test_cache_entry_validation_requires_schema_and_pipeline_version():
+    symbol_raster = _load_symbol_raster()
+    expected = {
+        "cache_key": "k",
+        "doc_scope": "d",
+        "family_name": "f",
+        "view_scale": 100,
+        "detail_level": "2",
+        "orientation_bucket": "r0",
+        "length_bucket_in": 12,
+    }
+    entry = dict(expected)
+    entry.update(
+        {
+            "cache_schema": "symbol_raster.v1",
+            "pipeline_version": symbol_raster._SYMBOL_RASTER_PIPELINE_VERSION,
+            "obb_width": 1.0,
+            "obb_height": 2.0,
+            "points": [[0.0, 1.0]],
+        }
+    )
+
+    points, reason = symbol_raster._validate_cache_entry(entry, expected)
+    assert reason is None
+    assert points == [[0.0, 1.0]]
+
+    bad_schema = dict(entry, cache_schema="old")
+    _, reason = symbol_raster._validate_cache_entry(bad_schema, expected)
+    assert reason == "wrong schema"
+
+    bad_version = dict(entry, pipeline_version="old-version")
+    _, reason = symbol_raster._validate_cache_entry(bad_version, expected)
+    assert reason == "version mismatch"
+
+
+def test_cache_entry_validation_rejects_invalid_points_payload():
+    symbol_raster = _load_symbol_raster()
+    expected = {
+        "cache_key": "k",
+        "doc_scope": "d",
+        "family_name": "f",
+        "view_scale": 100,
+        "detail_level": "2",
+        "orientation_bucket": "r0",
+        "length_bucket_in": 12,
+    }
+    entry = dict(expected)
+    entry.update(
+        {
+            "cache_schema": "symbol_raster.v1",
+            "pipeline_version": symbol_raster._SYMBOL_RASTER_PIPELINE_VERSION,
+            "obb_width": 1.0,
+            "obb_height": 2.0,
+            "points": [[0.0, "bad"]],
+        }
+    )
+
+    _, reason = symbol_raster._validate_cache_entry(entry, expected)
+    assert reason == "invalid points payload"

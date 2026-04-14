@@ -18,6 +18,7 @@ _DIAG_JSON_PATH = os.path.abspath(
     os.path.join(r"C:\Temp\revit_detail_intelligence\cache", "symbol_raster_diagnostics.json")
 )
 _DIAG_ROWS_BUFFER = []
+_SYMBOL_RASTER_PIPELINE_VERSION = "symbol_raster.pipeline.v1"
 
 
 def _write_diag_json(event, payload):
@@ -81,6 +82,23 @@ def _safe_type_sig_parts(element):
     return family_name.strip() or "<no-family>", type_name.strip() or "<unknown-type>"
 
 
+def _extract_type_id_int(element):
+    type_id_int = 0
+    try:
+        raw_type_id = element.GetTypeId()
+        if raw_type_id is not None:
+            try:
+                type_id_int = int(raw_type_id.Value)
+            except Exception:
+                try:
+                    type_id_int = int(raw_type_id.IntegerValue)
+                except Exception:
+                    type_id_int = 0
+    except Exception:
+        type_id_int = 0
+    return type_id_int
+
+
 def _orientation_bucket_from_transform(transform):
     basis_x = getattr(transform, "BasisX", None)
     bx = float(getattr(basis_x, "X", 1.0))
@@ -121,19 +139,7 @@ def _symbol_cache_key(element, view, obb_width=0.0, obb_height=0.0):
     length_bucket_in = int(math.ceil(max(obb_width, obb_height) * 12.0))
     # Stable type-id disambiguates Symbol-less instances (line-based families resolved via
     # GetTypeId) that share a placeholder family name, preventing cross-family cache collisions.
-    type_id_int = 0
-    try:
-        raw_type_id = element.GetTypeId()
-        if raw_type_id is not None:
-            try:
-                type_id_int = int(raw_type_id.Value)
-            except Exception:
-                try:
-                    type_id_int = int(raw_type_id.IntegerValue)
-                except Exception:
-                    type_id_int = 0
-    except Exception:
-        type_id_int = 0
+    type_id_int = _extract_type_id_int(element)
     # Cache schema note: detail_level, length_bucket_in, and type_id_int were added to the key.
     # Existing symbol_rasters caches built without these fields are intentionally invalidated
     # and will rebuild on misses.
@@ -141,7 +147,17 @@ def _symbol_cache_key(element, view, obb_width=0.0, obb_height=0.0):
         doc_scope, family_name, type_name, view_scale, detail_level, orientation_bucket,
         length_bucket_in, type_id_int
     )
-    return key, family_name, type_name, view_scale, detail_level, orientation_bucket, doc_scope, length_bucket_in
+    return (
+        key,
+        family_name,
+        type_name,
+        view_scale,
+        detail_level,
+        orientation_bucket,
+        doc_scope,
+        length_bucket_in,
+        type_id_int,
+    )
 
 
 def _cache_file_path(config, family_name, cache_key):
@@ -160,15 +176,102 @@ def _retained_png_path(config, family_name, cache_key):
 
 def _read_cache_entry(path):
     if not os.path.exists(path):
-        return None
+        return None, "file not found"
     try:
         with open(path, "r", encoding="utf-8") as handle:
             payload = json.load(handle)
         if isinstance(payload, dict):
-            return payload
+            return payload, None
+        return None, "wrong schema"
     except Exception:
-        return None
-    return None
+        return None, "parse error"
+
+
+def _cache_lookup_diag_payload(
+    cache_key,
+    cache_path,
+    doc_scope,
+    family_name,
+    type_name,
+    type_id_int,
+    view_scale,
+    detail_level,
+    orientation_bucket,
+    length_bucket_in,
+    is_line_based,
+):
+    return {
+        "cache_key": cache_key,
+        "cache_path": cache_path,
+        "doc_scope": doc_scope,
+        "family_name": family_name,
+        "type_name": type_name,
+        "type_id_int": int(type_id_int),
+        "view_scale": int(view_scale),
+        "detail_level": str(detail_level),
+        "orientation_bucket": str(orientation_bucket),
+        "length_bucket_in": int(length_bucket_in),
+        "is_line_based_lookup": bool(is_line_based),
+    }
+
+
+def _is_numeric(value):
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _is_points_payload_valid(points):
+    if not isinstance(points, list):
+        return False
+    for pt in points:
+        if not isinstance(pt, (list, tuple)) or len(pt) != 2:
+            return False
+        if not _is_numeric(pt[0]) or not _is_numeric(pt[1]):
+            return False
+    return True
+
+
+def _validate_cache_entry(cached, expected):
+    if not isinstance(cached, dict):
+        return None, "wrong schema"
+    if cached.get("cache_schema") != "symbol_raster.v1":
+        return None, "wrong schema"
+    if cached.get("pipeline_version") != _SYMBOL_RASTER_PIPELINE_VERSION:
+        return None, "version mismatch"
+
+    required_fields = (
+        "cache_key",
+        "doc_scope",
+        "family_name",
+        "view_scale",
+        "detail_level",
+        "orientation_bucket",
+        "length_bucket_in",
+        "obb_width",
+        "obb_height",
+        "points",
+    )
+    missing = [name for name in required_fields if name not in cached]
+    if missing:
+        return None, "missing required fields"
+
+    for name in (
+        "cache_key",
+        "doc_scope",
+        "family_name",
+        "view_scale",
+        "detail_level",
+        "orientation_bucket",
+        "length_bucket_in",
+    ):
+        if cached.get(name) != expected.get(name):
+            return None, "missing required fields"
+    if not _is_numeric(cached.get("obb_width")) or not _is_numeric(cached.get("obb_height")):
+        return None, "missing required fields"
+
+    points = cached.get("points")
+    if not _is_points_payload_valid(points):
+        return None, "invalid points payload"
+    return points, None
 
 
 def _write_cache_entry(path, payload):
@@ -714,12 +817,13 @@ def _collect_points_for_element(view, doc, element, config):
         (
             cache_key,
             family_name,
-            _type_name,
+            type_name,
             view_scale,
             detail_level,
             orientation_bucket,
             doc_scope,
             length_bucket_in,
+            type_id_int,
         ) = _symbol_cache_key(element, view, obb_width=obb_width, obb_height=obb_height)
     except Exception as exc:
         warnings.warn(
@@ -730,9 +834,38 @@ def _collect_points_for_element(view, doc, element, config):
         return None, None
 
     cache_path = _cache_file_path(config, family_name, cache_key)
-    cached = _read_cache_entry(cache_path)
-    if isinstance(cached, dict) and "points" in cached:
-        return elem_id, _translate_points(cached.get("points") or [], placement_point)
+    is_line_based_lookup = getattr(element, "Symbol", None) is None
+    lookup_diag = _cache_lookup_diag_payload(
+        cache_key=cache_key,
+        cache_path=cache_path,
+        doc_scope=doc_scope,
+        family_name=family_name,
+        type_name=type_name,
+        type_id_int=type_id_int,
+        view_scale=view_scale,
+        detail_level=detail_level,
+        orientation_bucket=orientation_bucket,
+        length_bucket_in=length_bucket_in,
+        is_line_based=is_line_based_lookup,
+    )
+    _write_diag_json("cache_lookup_started", lookup_diag)
+    cached, miss_reason = _read_cache_entry(cache_path)
+    expected_entry = {
+        "cache_key": cache_key,
+        "doc_scope": doc_scope,
+        "family_name": family_name,
+        "view_scale": view_scale,
+        "detail_level": detail_level,
+        "orientation_bucket": orientation_bucket,
+        "length_bucket_in": length_bucket_in,
+    }
+    if miss_reason is None:
+        cached_points, miss_reason = _validate_cache_entry(cached, expected_entry)
+        if miss_reason is None:
+            _write_diag_json("cache_hit", lookup_diag)
+            return elem_id, _translate_points(cached_points, placement_point)
+    _write_diag_json("cache_miss_reason", dict(lookup_diag, reason=str(miss_reason or "unknown")))
+    _write_diag_json("cache_miss", lookup_diag)
 
     if obb_width <= 0.0 or obb_height <= 0.0:
         entry = {
@@ -747,6 +880,7 @@ def _collect_points_for_element(view, doc, element, config):
             "obb_width": obb_width,
             "obb_height": obb_height,
             "points": [],
+            "pipeline_version": _SYMBOL_RASTER_PIPELINE_VERSION,
             "build_time_utc": datetime.now(timezone.utc).isoformat(),
         }
         _write_cache_entry(cache_path, entry)
@@ -831,6 +965,7 @@ def _collect_points_for_element(view, doc, element, config):
             "obb_width": obb_width,
             "obb_height": obb_height,
             "points": points_xy_rel,
+            "pipeline_version": _SYMBOL_RASTER_PIPELINE_VERSION,
             "build_time_utc": datetime.now(timezone.utc).isoformat(),
         }
         _write_cache_entry(cache_path, entry)
