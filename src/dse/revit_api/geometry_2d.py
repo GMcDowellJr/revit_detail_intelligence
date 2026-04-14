@@ -154,10 +154,7 @@ def get_2d_curves_in_view(
                         except Exception:
                             # Invalid raster point rows are ignored per-element.
                             continue
-                    # Raster replaces geometry-curve extraction only when non-empty;
-                    # empty raster payload falls back to vector curve extraction.
-                    if raster_for_elem:
-                        continue
+
             curves_for_elem = None
             if element_curves is not None:
                 cache_key = element_curve_cache_key(elem)
