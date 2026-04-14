@@ -545,9 +545,10 @@ def _create_fresh_view_with_symbol(doc, view, element, obb_width=0.0, obb_height
 
         family = getattr(symbol, "Family", None)
         pt = getattr(family, "FamilyPlacementType", None) if family else None
-        if pt is not None and pt != FamilyPlacementType.ViewBased:
+        _SUPPORTED_PLACEMENT_TYPES = (FamilyPlacementType.ViewBased, FamilyPlacementType.CurveBasedDetail)
+        if pt is not None and pt not in _SUPPORTED_PLACEMENT_TYPES:
             _write_diag_json(
-                "symbol_skipped_non_view_based",
+                "symbol_skipped_unsupported_placement_type",
                 {
                     "placement_type": str(int(pt)),
                     "family_name": str(getattr(family, "Name", "unknown")),
