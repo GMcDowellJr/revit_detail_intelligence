@@ -101,7 +101,7 @@ def _document_identity(doc):
         return "<no-doc>"
 
 
-def _symbol_cache_key(element, view):
+def _symbol_cache_key(element, view, obb_width=0.0, obb_height=0.0):
     family_name, type_name = _safe_type_sig_parts(element)
     view_scale = int(round(float(getattr(view, "Scale", 1))))
     detail_level = str(int(view.DetailLevel))
@@ -109,12 +109,14 @@ def _symbol_cache_key(element, view):
     orientation_bucket = _orientation_bucket_from_transform(transform)
     doc_identity = _document_identity(getattr(view, "Document", None))
     doc_scope = hashlib.sha1(doc_identity.encode("utf-8")).hexdigest()[:12]
-    # Cache schema note: detail_level was added to the key. Existing symbol_rasters caches
-    # built without detail_level are intentionally invalidated and will rebuild on misses.
-    key = "{}|{}|{}|{}|{}|{}".format(
-        doc_scope, family_name, type_name, view_scale, detail_level, orientation_bucket
+    length_bucket_in = int(math.ceil(max(obb_width, obb_height) * 12.0))
+    # Cache schema note: detail_level and length_bucket_in were added to the key. Existing
+    # symbol_rasters caches built without these fields are intentionally invalidated and will
+    # rebuild on misses.
+    key = "{}|{}|{}|{}|{}|{}|{}in".format(
+        doc_scope, family_name, type_name, view_scale, detail_level, orientation_bucket, length_bucket_in
     )
-    return key, family_name, type_name, view_scale, detail_level, orientation_bucket, doc_scope
+    return key, family_name, type_name, view_scale, detail_level, orientation_bucket, doc_scope, length_bucket_in
 
 
 def _cache_file_path(config, family_name, cache_key):
@@ -507,7 +509,7 @@ def _get_drafting_view_family_type_id(doc):
     return None
 
 
-def _create_fresh_view_with_symbol(doc, view, element):
+def _create_fresh_view_with_symbol(doc, view, element, obb_width=0.0, obb_height=0.0):
     tmp_view = None
     tmp_inst = None
     symbol = None
@@ -523,20 +525,19 @@ def _create_fresh_view_with_symbol(doc, view, element):
 
         symbol = getattr(element, "Symbol", None)
         if symbol is None:
+            try:
+                type_id = element.GetTypeId()
+                if type_id is not None:
+                    symbol = doc.GetElement(type_id)
+            except Exception:
+                pass
+        if symbol is None:
             _write_diag_json(
-                "symbol_none_early_exit",
+                "symbol_unresolvable",
                 {
                     "element_id": _safe_int_element_id(element),
                     "element_class": type(element).__name__,
                     "category": str(getattr(getattr(element, "Category", None), "Name", "unknown")),
-                    "family_placement_type": str(
-                        getattr(
-                            getattr(getattr(element, "Symbol", None), "Family", None),
-                            "FamilyPlacementType",
-                            "unknown",
-                        )
-                    ),
-                    "has_get_type_id": hasattr(element, "GetTypeId"),
                 },
             )
             return None
@@ -560,7 +561,25 @@ def _create_fresh_view_with_symbol(doc, view, element):
             tmp_view.Scale = view.Scale
             if not symbol.IsActive:
                 symbol.Activate()
-            tmp_inst = doc.Create.NewFamilyInstance(XYZ(0, 0, 0), symbol, tmp_view)
+            try:
+                tmp_inst = doc.Create.NewFamilyInstance(XYZ(0, 0, 0), symbol, tmp_view)
+            except Exception:
+                # Fall back to curve overload for line-based families
+                from Autodesk.Revit.DB import Line
+
+                length_ft = max(obb_width, obb_height)
+                length_ft = max(length_ft, 1.0 / 12.0)  # minimum 1 inch
+                end_pt = XYZ(length_ft, 0, 0)
+                line = Line.CreateBound(XYZ(0, 0, 0), end_pt)
+                tmp_inst = doc.Create.NewFamilyInstance(line, symbol, tmp_view)
+                _write_diag_json(
+                    "curve_overload_used",
+                    {
+                        "element_id": _safe_int_element_id(element),
+                        "length_ft": length_ft,
+                        "family_name": str(getattr(getattr(symbol, "Family", None), "Name", "unknown")),
+                    },
+                )
             doc.Regenerate()
 
         bb = tmp_inst.get_BoundingBox(tmp_view)
@@ -632,23 +651,6 @@ def _delete_temp_view(doc, tmp_view):
 def _collect_points_for_element(view, doc, element, config):
     elem_id = _safe_int_element_id(element)
     family_name, _ = _safe_type_sig_parts(element)
-    try:
-        (
-            cache_key,
-            family_name,
-            _type_name,
-            view_scale,
-            detail_level,
-            orientation_bucket,
-            doc_scope,
-        ) = _symbol_cache_key(element, view)
-    except Exception as exc:
-        warnings.warn(
-            "DSE: symbol raster key failure for element {} ({}) : {}".format(elem_id, family_name, exc),
-            RuntimeWarning,
-            stacklevel=2,
-        )
-        return None, None
 
     transform = None
     bbox = None
@@ -667,13 +669,33 @@ def _collect_points_for_element(view, doc, element, config):
         return None, None
 
     placement_point = to_view_local_2d([transform.Origin], view)[0]
+    obb_width = abs(float(bbox.Max.X - bbox.Min.X))
+    obb_height = abs(float(bbox.Max.Y - bbox.Min.Y))
+
+    try:
+        (
+            cache_key,
+            family_name,
+            _type_name,
+            view_scale,
+            detail_level,
+            orientation_bucket,
+            doc_scope,
+            length_bucket_in,
+        ) = _symbol_cache_key(element, view, obb_width=obb_width, obb_height=obb_height)
+    except Exception as exc:
+        warnings.warn(
+            "DSE: symbol raster key failure for element {} ({}) : {}".format(elem_id, family_name, exc),
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return None, None
+
     cache_path = _cache_file_path(config, family_name, cache_key)
     cached = _read_cache_entry(cache_path)
     if isinstance(cached, dict) and "points" in cached:
         return elem_id, _translate_points(cached.get("points") or [], placement_point)
 
-    obb_width = abs(float(bbox.Max.X - bbox.Min.X))
-    obb_height = abs(float(bbox.Max.Y - bbox.Min.Y))
     if obb_width <= 0.0 or obb_height <= 0.0:
         entry = {
             "cache_schema": "symbol_raster.v1",
@@ -682,6 +704,7 @@ def _collect_points_for_element(view, doc, element, config):
             "view_scale": view_scale,
             "detail_level": detail_level,
             "orientation_bucket": orientation_bucket,
+            "length_bucket_in": length_bucket_in,
             "doc_scope": doc_scope,
             "obb_width": obb_width,
             "obb_height": obb_height,
@@ -701,7 +724,7 @@ def _collect_points_for_element(view, doc, element, config):
     retained_png_path = None
     export_tmp_dir = None
     try:
-        tmp_view = _create_fresh_view_with_symbol(doc, view, element)
+        tmp_view = _create_fresh_view_with_symbol(doc, view, element, obb_width=obb_width, obb_height=obb_height)
         _write_diag_json(
             "fresh_view_created",
             {
@@ -765,6 +788,7 @@ def _collect_points_for_element(view, doc, element, config):
             "view_scale": view_scale,
             "detail_level": detail_level,
             "orientation_bucket": orientation_bucket,
+            "length_bucket_in": length_bucket_in,
             "doc_scope": doc_scope,
             "obb_width": obb_width,
             "obb_height": obb_height,
