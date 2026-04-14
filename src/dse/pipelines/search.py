@@ -626,6 +626,8 @@ def _extract_bundle_with_cache(view, write_legacy_cache_record=True, symbol_rast
         state_hash=state_ctx["state_hash"],
         pipeline_version=CONFIG["pipeline_version"],
         schema_version=SEARCH_SCHEMA_VERSION,
+        source_doc_id=state_ctx.get("source_doc_id"),
+        source_doc_name=state_ctx.get("source_doc_name"),
     )
     if cached is not None:
         cached.presentation_summary.debug["cache_status"] = status

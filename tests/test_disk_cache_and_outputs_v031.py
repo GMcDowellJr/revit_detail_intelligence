@@ -157,6 +157,55 @@ def test_legacy_path_fallback_still_readable(tmp_path):
     assert loaded.view_id == 53
 
 
+def test_get_cached_bundle_selects_matching_doc_scope_without_cross_invalidation(tmp_path):
+    cache_root = str(tmp_path / "cache")
+    mem = ViewFeatureCache()
+    bundle_a = _bundle(view_id=99, state_hash="sa", source_doc_id="doc-a", source_doc_name="Doc A")
+    bundle_b = _bundle(view_id=99, state_hash="sb", source_doc_id="doc-b", source_doc_name="Doc B")
+
+    put_bundle_in_caches(
+        in_memory_cache=mem,
+        cache_root=cache_root,
+        view_id=99,
+        state_hash="sa",
+        pipeline_version="p1",
+        schema_version="s.v1",
+        payload=bundle_a,
+    )
+    put_bundle_in_caches(
+        in_memory_cache=mem,
+        cache_root=cache_root,
+        view_id=99,
+        state_hash="sb",
+        pipeline_version="p1",
+        schema_version="s.v1",
+        payload=bundle_b,
+    )
+
+    view_dir = tmp_path / "cache" / "view_features"
+    doc_scoped = sorted([name for name in os.listdir(str(view_dir)) if name.startswith("view_99__doc_")])
+    assert len(doc_scoped) == 2
+
+    mem.entries = {}
+    payload, status = get_cached_bundle_with_diagnostics(
+        in_memory_cache=mem,
+        cache_root=cache_root,
+        view_id=99,
+        state_hash="sb",
+        pipeline_version="p1",
+        schema_version="s.v1",
+        source_doc_id="doc-b",
+        source_doc_name="Doc B",
+    )
+    assert payload is not None
+    assert payload.state_signature.state_hash == "sb"
+    assert status == "hit_disk"
+
+    # A targeted lookup for doc B should not delete doc A's cache record.
+    after = sorted([name for name in os.listdir(str(view_dir)) if name.startswith("view_99__doc_")])
+    assert len(after) == 2
+
+
 def test_many_to_many_edges_and_output_files(tmp_path):
     rows = [
         {
