@@ -14,11 +14,12 @@ Output:
 """
 
 import datetime
+import json
 import os
 import sys
+import urllib.error
+import urllib.request
 from pathlib import Path
-
-import requests
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
@@ -114,14 +115,20 @@ query($owner: String!, $name: String!, $path: String!, $since: GitTimestamp!) {
 
 def _graphql(token, query, variables=None):
     """Execute a GitHub GraphQL query; raise on HTTP or API errors."""
-    resp = requests.post(
+    body = json.dumps({"query": query, "variables": variables or {}}).encode()
+    req = urllib.request.Request(
         GRAPHQL_URL,
+        data=body,
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-        json={"query": query, "variables": variables or {}},
-        timeout=30,
+        method="POST",
     )
-    resp.raise_for_status()
-    payload = resp.json()
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            payload = json.loads(resp.read().decode())
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError(f"HTTP {exc.code} {exc.reason}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"URL error: {exc.reason}") from exc
     if "errors" in payload:
         raise RuntimeError(f"GraphQL errors: {payload['errors']}")
     return payload["data"]
