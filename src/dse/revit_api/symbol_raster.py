@@ -17,6 +17,7 @@ from dse.revit_api.geometry_2d import to_view_local_2d
 _DIAG_JSON_PATH = os.path.abspath(
     os.path.join(r"C:\Temp\revit_detail_intelligence\cache", "symbol_raster_diagnostics.json")
 )
+_DIAG_ROWS_BUFFER = []
 
 
 def _write_diag_json(event, payload):
@@ -25,6 +26,14 @@ def _write_diag_json(event, payload):
         "ts_utc": datetime.now(timezone.utc).isoformat(),
         "payload": payload,
     }
+    _DIAG_ROWS_BUFFER.append(row)
+
+
+def _flush_diag_json_buffer():
+    if not _DIAG_ROWS_BUFFER:
+        return
+    pending_rows = list(_DIAG_ROWS_BUFFER)
+    del _DIAG_ROWS_BUFFER[:]
     try:
         ensure_dir(os.path.dirname(_DIAG_JSON_PATH))
         existing = []
@@ -33,11 +42,11 @@ def _write_diag_json(event, payload):
                 existing = json.load(handle)
             if not isinstance(existing, list):
                 existing = []
-        existing.append(row)
+        existing.extend(pending_rows)
         with open(_DIAG_JSON_PATH, "w", encoding="utf-8") as handle:
             json.dump(existing, handle, indent=2, ensure_ascii=True)
     except Exception:
-        pass
+        _DIAG_ROWS_BUFFER[:0] = pending_rows
 
 
 def _safe_int_element_id(element):
@@ -839,35 +848,40 @@ def collect_raster_points_for_view(view, doc=None, config=None):
     out = {}
     config = config or {}
     doc = doc or getattr(view, "Document", None)
-    if view is None or doc is None:
-        return out
-
     try:
-        elements = get_view_elements(view)
-    except Exception as exc:
-        warnings.warn(
-            "DSE: symbol raster failed to read view elements: {}".format(exc),
-            RuntimeWarning,
-            stacklevel=2,
-        )
-        return out
+        if view is None or doc is None:
+            return out
 
-    for element in elements:
         try:
-            if not is_family_instance(element):
-                continue
-            elem_id, points = _collect_points_for_element(view, doc, element, config)
-            if elem_id is None:
-                continue
-            out[int(elem_id)] = points or []
+            elements = get_view_elements(view)
         except Exception as exc:
-            elem_id = _safe_int_element_id(element)
-            fam_name, _ = _safe_type_sig_parts(element)
             warnings.warn(
-                "DSE: symbol raster unexpected failure for element {} ({}) : {}".format(elem_id, fam_name, exc),
+                "DSE: symbol raster failed to read view elements: {}".format(exc),
                 RuntimeWarning,
                 stacklevel=2,
             )
-            continue
+            return out
 
-    return out
+        for element in elements:
+            try:
+                if not is_family_instance(element):
+                    continue
+                elem_id, points = _collect_points_for_element(view, doc, element, config)
+                if elem_id is None:
+                    continue
+                out[int(elem_id)] = points or []
+            except Exception as exc:
+                elem_id = _safe_int_element_id(element)
+                fam_name, _ = _safe_type_sig_parts(element)
+                warnings.warn(
+                    "DSE: symbol raster unexpected failure for element {} ({}) : {}".format(
+                        elem_id, fam_name, exc
+                    ),
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+                continue
+
+        return out
+    finally:
+        _flush_diag_json_buffer()
