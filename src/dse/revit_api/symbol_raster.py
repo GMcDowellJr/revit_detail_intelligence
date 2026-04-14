@@ -471,76 +471,104 @@ def _start_transaction(doc, name):
     return tx
 
 
-def _duplicate_and_isolate_view(doc, view, element):
+class scoped_transaction:
+    def __init__(self, doc, name):
+        self._tx = _start_transaction(doc, name)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type is None:
+            self._tx.Commit()
+            return False
+        try:
+            self._tx.RollBack()
+        except Exception:
+            pass
+        return False
+
+
+def _get_drafting_view_family_type_id(doc):
+    import clr
+
+    clr.AddReference("RevitAPI")
+    from Autodesk.Revit.DB import (
+        ElementClassFilter,
+        FilteredElementCollector,
+        ViewFamily,
+        ViewFamilyType,
+    )
+
+    collector = FilteredElementCollector(doc).WherePasses(ElementClassFilter(ViewFamilyType))
+    for view_family_type in collector:
+        if getattr(view_family_type, "ViewFamily", None) == ViewFamily.Drafting:
+            return view_family_type.Id
+    return None
+
+
+def _create_fresh_view_with_symbol(doc, view, element):
     tmp_view = None
+    tmp_inst = None
+    symbol = None
     try:
         import clr
 
         clr.AddReference("RevitAPI")
-        from Autodesk.Revit.DB import BoundingBoxXYZ, ViewDuplicateOption, XYZ
+        from Autodesk.Revit.DB import BoundingBoxXYZ, ViewDrafting, XYZ
 
-        tx_dup = _start_transaction(doc, "DSE: duplicate view for symbol raster")
-        try:
-            tmp_id = view.Duplicate(ViewDuplicateOption.Duplicate)
-            tmp_view = doc.GetElement(tmp_id)
+        drafting_vft_id = _get_drafting_view_family_type_id(doc)
+        if drafting_vft_id is None:
+            return None
+
+        symbol = getattr(element, "Symbol", None)
+        if symbol is None:
+            return None
+
+        with scoped_transaction(doc, "DSE: create fresh view for symbol raster"):
+            tmp_view = ViewDrafting.Create(doc, drafting_vft_id)
             tmp_view.Scale = view.Scale
-            tx_dup.Commit()
-        except Exception:
-            try:
-                tx_dup.RollBack()
-            except Exception:
-                pass
-            raise
+            if not symbol.IsActive:
+                symbol.Activate()
+            tmp_inst = doc.Create.NewFamilyInstance(XYZ(0, 0, 0), symbol, tmp_view)
+            doc.Regenerate()
 
-        tx_iso = _start_transaction(doc, "DSE: isolate element for symbol raster")
-        try:
-            tmp_view.IsolateElementTemporary(element.Id)
-            tx_iso.Commit()
-        except Exception:
-            try:
-                tx_iso.RollBack()
-            except Exception:
-                pass
-            raise
-
-        bb = element.get_BoundingBox(tmp_view)
+        bb = tmp_inst.get_BoundingBox(tmp_view)
         if bb is None:
-            bb = element.get_BoundingBox(None)
-        if bb is not None:
-            tx_crop = _start_transaction(doc, "DSE: set crop for symbol raster")
-            try:
-                width = float(bb.Max.X - bb.Min.X)
-                height = float(bb.Max.Y - bb.Min.Y)
-                pad = max(width, height) * 0.25
-                pad = max(pad, 0.1)
-                expanded_bbox = BoundingBoxXYZ()
-                expanded_bbox.Min = XYZ(bb.Min.X - pad, bb.Min.Y - pad, bb.Min.Z - pad)
-                expanded_bbox.Max = XYZ(bb.Max.X + pad, bb.Max.Y + pad, bb.Max.Z + pad)
-                tmp_view.CropBoxActive = True
-                tmp_view.CropBoxVisible = False
-                tmp_view.CropBox = expanded_bbox
-                doc.Regenerate()
-                tx_crop.Commit()
-            except Exception:
-                try:
-                    tx_crop.RollBack()
-                except Exception:
-                    pass
-                raise
+            return tmp_view
+
+        with scoped_transaction(doc, "DSE: set crop for symbol raster"):
+            width = float(bb.Max.X - bb.Min.X)
+            height = float(bb.Max.Y - bb.Min.Y)
+            pad = max(width, height) * 0.25
+            pad = max(pad, 0.1)
+            expanded_bbox = BoundingBoxXYZ()
+            expanded_bbox.Min = XYZ(bb.Min.X - pad, bb.Min.Y - pad, bb.Min.Z)
+            expanded_bbox.Max = XYZ(bb.Max.X + pad, bb.Max.Y + pad, bb.Max.Z)
+            tmp_view.CropBoxActive = True
+            tmp_view.CropBoxVisible = False
+            tmp_view.CropBox = expanded_bbox
+            doc.Regenerate()
 
         return tmp_view
-    except Exception:
+    except Exception as exc:
+        try:
+            family = getattr(symbol, "Family", None)
+            pt = str(getattr(family, "FamilyPlacementType", "unknown")) if family else "no_family"
+        except Exception:
+            pt = "error_reading"
+        _write_diag_json(
+            "fresh_view_create_failed",
+            {
+                "reason": str(exc),
+                "type": type(exc).__name__,
+                "family_placement_type": pt,
+            },
+        )
         if tmp_view is not None:
             try:
-                tx_cleanup = _start_transaction(doc, "DSE: cleanup failed symbol raster view")
-                try:
+                with scoped_transaction(doc, "DSE: cleanup failed symbol raster view"):
                     doc.Delete(tmp_view.Id)
-                    tx_cleanup.Commit()
-                except Exception:
-                    try:
-                        tx_cleanup.RollBack()
-                    except Exception:
-                        pass
             except Exception:
                 pass
         return None
@@ -635,7 +663,14 @@ def _collect_points_for_element(view, doc, element, config):
     retained_png_path = None
     export_tmp_dir = None
     try:
-        tmp_view = _duplicate_and_isolate_view(doc, view, element)
+        tmp_view = _create_fresh_view_with_symbol(doc, view, element)
+        _write_diag_json(
+            "fresh_view_created",
+            {
+                "tmp_view_is_none": tmp_view is None,
+                "tmp_view_id": _safe_int_element_id(tmp_view) if tmp_view is not None else None,
+            },
+        )
         if tmp_view is None:
             raise RuntimeError("failed to duplicate/isolate temporary view")
         dpi = int(config.get("symbol_raster_dpi", 150))
