@@ -531,8 +531,7 @@ def _create_fresh_view_with_symbol(doc, view, element):
             if not symbol.IsActive:
                 symbol.Activate()
             tmp_inst = doc.Create.NewFamilyInstance(XYZ(0, 0, 0), symbol, tmp_view)
-
-        doc.Regenerate()
+            doc.Regenerate()
 
         bb = tmp_inst.get_BoundingBox(tmp_view)
         if bb is None:
