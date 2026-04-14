@@ -896,6 +896,7 @@ def _collect_points_for_element(view, doc, element, config, diagnostic_callback=
                 length_scale_x=length_scale_x,
             )
     miss_reason = str(miss_reason or "unknown")
+    symbol_type_key = "{}|{}".format(family_name, type_name)
 
     if obb_width <= 0.0 or obb_height <= 0.0:
         entry = {
@@ -916,7 +917,7 @@ def _collect_points_for_element(view, doc, element, config, diagnostic_callback=
         _emit_lookup_diagnostic(
             diagnostic_callback,
             {
-                "symbol_type_key": "{}|{}".format(family_name, type_name),
+                "symbol_type_key": symbol_type_key,
                 "cache_hit": False,
                 "miss_reason": miss_reason,
                 "elapsed_ms": (time.perf_counter() - lookup_start) * 1000.0,
@@ -955,6 +956,15 @@ def _collect_points_for_element(view, doc, element, config, diagnostic_callback=
                 dst.write(blob)
             png_path = retained_png_path
     except Exception as exc:
+        _emit_lookup_diagnostic(
+            diagnostic_callback,
+            {
+                "symbol_type_key": symbol_type_key,
+                "cache_hit": False,
+                "miss_reason": "rebuild_export_failure: {}".format(exc),
+                "elapsed_ms": (time.perf_counter() - lookup_start) * 1000.0,
+            },
+        )
         warnings.warn(
             "DSE: symbol raster export failure for element {} ({}) : {}".format(elem_id, family_name, exc),
             RuntimeWarning,
@@ -1007,6 +1017,15 @@ def _collect_points_for_element(view, doc, element, config, diagnostic_callback=
                     y_rel = raster_min_y + (1.0 - (float(row) / float(max(1, img_height)))) * raster_world_height
                     points_xy_rel.append([x_rel, y_rel])
             except Exception as exc:
+                _emit_lookup_diagnostic(
+                    diagnostic_callback,
+                    {
+                        "symbol_type_key": symbol_type_key,
+                        "cache_hit": False,
+                        "miss_reason": "rebuild_decode_failure: {}".format(exc),
+                        "elapsed_ms": (time.perf_counter() - lookup_start) * 1000.0,
+                    },
+                )
                 warnings.warn(
                     "DSE: symbol raster decode failure for element {} ({}) : {}".format(
                         elem_id, family_name, exc
@@ -1043,7 +1062,7 @@ def _collect_points_for_element(view, doc, element, config, diagnostic_callback=
         _emit_lookup_diagnostic(
             diagnostic_callback,
             {
-                "symbol_type_key": "{}|{}".format(family_name, type_name),
+                "symbol_type_key": symbol_type_key,
                 "cache_hit": False,
                 "miss_reason": miss_reason,
                 "elapsed_ms": (time.perf_counter() - lookup_start) * 1000.0,

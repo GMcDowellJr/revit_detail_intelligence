@@ -121,6 +121,68 @@ def test_collect_points_emits_cache_lookup_summary(monkeypatch):
     assert events[0]["elapsed_ms"] >= 0.0
 
 
+def test_collect_points_emits_miss_summary_on_rebuild_export_failure(monkeypatch):
+    symbol_raster = _load_symbol_raster()
+    events = []
+
+    class _Vec(object):
+        def __init__(self, x=0.0, y=0.0):
+            self.X = x
+            self.Y = y
+
+    class _Transform(object):
+        Origin = _Vec(0.0, 0.0)
+        BasisX = _Vec(1.0, 0.0)
+        Determinant = 1.0
+
+    class _BBox(object):
+        Min = _Vec(0.0, 0.0)
+        Max = _Vec(1.0, 1.0)
+
+    class _Elem(object):
+        Symbol = object()
+
+        def GetTotalTransform(self):
+            return _Transform()
+
+        def get_BoundingBox(self, _view):
+            return _BBox()
+
+        def GetTypeId(self):
+            return type("TID", (), {"IntegerValue": 42})()
+
+    class _View(object):
+        Scale = 100
+        DetailLevel = 2
+        Document = type("D", (), {"PathName": "doc.rvt"})()
+
+    monkeypatch.setattr(symbol_raster, "_safe_int_element_id", lambda _e: 99)
+    monkeypatch.setattr(symbol_raster, "_safe_type_sig_parts", lambda _e: ("Fam", "Type"))
+    monkeypatch.setattr(
+        symbol_raster,
+        "_instance_pose_in_view_2d",
+        lambda *_args, **_kwargs: ((0.0, 0.0), (1.0, 0.0), False, 0.0),
+    )
+    monkeypatch.setattr(symbol_raster, "_cache_file_path", lambda _cfg, _fam, _key: "/tmp/cache.json")
+    monkeypatch.setattr(symbol_raster, "_read_cache_entry", lambda _path: (None, "file not found"))
+    monkeypatch.setattr(
+        symbol_raster,
+        "_create_fresh_view_with_symbol",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("export boom")),
+    )
+
+    elem_id, points = symbol_raster._collect_points_for_element(
+        _View(), object(), _Elem(), {}, diagnostic_callback=lambda payload: events.append(payload)
+    )
+
+    assert elem_id is None
+    assert points is None
+    assert len(events) == 1
+    assert events[0]["cache_hit"] is False
+    assert events[0]["symbol_type_key"] == "Fam|Type"
+    assert events[0]["miss_reason"].startswith("rebuild_export_failure:")
+
+
 def test_cache_entry_validation_requires_schema_and_pipeline_version():
     symbol_raster = _load_symbol_raster()
     expected = {
