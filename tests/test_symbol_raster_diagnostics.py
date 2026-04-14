@@ -129,6 +129,11 @@ def test_collect_points_emits_cache_lookup_diagnostics(monkeypatch):
     monkeypatch.setattr(symbol_raster, "_safe_int_element_id", lambda _e: 99)
     monkeypatch.setattr(symbol_raster, "_safe_type_sig_parts", lambda _e: ("Fam", "Type"))
     monkeypatch.setattr(symbol_raster, "to_view_local_2d", lambda pts, _view: [[0.0, 0.0] for _ in pts])
+    monkeypatch.setattr(
+        symbol_raster,
+        "_instance_pose_in_view_2d",
+        lambda *_args, **_kwargs: ((0.0, 0.0), (1.0, 0.0), False, 0.0),
+    )
     monkeypatch.setattr(symbol_raster, "_cache_file_path", lambda _cfg, _fam, _key: "/tmp/cache.json")
     monkeypatch.setattr(symbol_raster, "_read_cache_entry", lambda _path: (None, "file not found"))
     monkeypatch.setattr(symbol_raster, "_create_fresh_view_with_symbol", lambda *_args, **_kwargs: None)
@@ -161,8 +166,7 @@ def test_cache_entry_validation_requires_schema_and_pipeline_version():
         "family_name": "f",
         "view_scale": 100,
         "detail_level": "2",
-        "orientation_bucket": "r0",
-        "length_bucket_in": 12,
+        "is_line_based": False,
     }
     entry = dict(expected)
     entry.update(
@@ -196,8 +200,7 @@ def test_cache_entry_validation_rejects_invalid_points_payload():
         "family_name": "f",
         "view_scale": 100,
         "detail_level": "2",
-        "orientation_bucket": "r0",
-        "length_bucket_in": 12,
+        "is_line_based": False,
     }
     entry = dict(expected)
     entry.update(
