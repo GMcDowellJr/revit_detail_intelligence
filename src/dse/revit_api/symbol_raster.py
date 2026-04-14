@@ -18,7 +18,7 @@ _DIAG_JSON_PATH = os.path.abspath(
     os.path.join(r"C:\Temp\revit_detail_intelligence\cache", "symbol_raster_diagnostics.json")
 )
 _DIAG_ROWS_BUFFER = []
-_SYMBOL_RASTER_PIPELINE_VERSION = "symbol_raster.pipeline.v2"
+_SYMBOL_RASTER_PIPELINE_VERSION = "symbol_raster.pipeline.v3"
 _CANONICAL_LINE_LENGTH_FT = 1.0  # 12 inches
 
 
@@ -1034,7 +1034,7 @@ def _collect_points_for_element(view, doc, element, config):
                     # Canonical symbol-local point cache (type-local, pose-free representation),
                     # derived from canonical temporary-symbol bounds (not observed instance OBB).
                     x_rel = raster_min_x + (float(col) / float(max(1, img_width))) * raster_world_width
-                    y_rel = raster_min_y + (float(row) / float(max(1, img_height))) * raster_world_height
+                    y_rel = raster_min_y + (1.0 - (float(row) / float(max(1, img_height)))) * raster_world_height
                     points_xy_rel.append([x_rel, y_rel])
             except Exception as exc:
                 warnings.warn(
