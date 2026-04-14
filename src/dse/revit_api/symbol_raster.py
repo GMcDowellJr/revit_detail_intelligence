@@ -18,7 +18,8 @@ _DIAG_JSON_PATH = os.path.abspath(
     os.path.join(r"C:\Temp\revit_detail_intelligence\cache", "symbol_raster_diagnostics.json")
 )
 _DIAG_ROWS_BUFFER = []
-_SYMBOL_RASTER_PIPELINE_VERSION = "symbol_raster.pipeline.v1"
+_SYMBOL_RASTER_PIPELINE_VERSION = "symbol_raster.pipeline.v2"
+_CANONICAL_LINE_LENGTH_FT = 1.0  # 12 inches
 
 
 def _write_diag_json(event, payload):
@@ -99,15 +100,15 @@ def _extract_type_id_int(element):
     return type_id_int
 
 
-def _orientation_bucket_from_transform(transform):
-    basis_x = getattr(transform, "BasisX", None)
-    bx = float(getattr(basis_x, "X", 1.0))
-    by = float(getattr(basis_x, "Y", 0.0))
-    angle_deg = math.degrees(math.atan2(by, bx)) % 360.0
-    bucket = int(round(angle_deg / 45.0)) % 8
-    det = float(getattr(transform, "Determinant", 1.0))
-    is_mirrored = det < 0.0
-    return "r{}{}".format(bucket, "m" if is_mirrored else "")
+def _is_line_based_family_instance(element):
+    if getattr(element, "Symbol", None) is None:
+        return True
+    try:
+        placement_type = str(getattr(getattr(element.Symbol, "Family", None), "FamilyPlacementType", ""))
+    except Exception:
+        placement_type = ""
+    placement_type = placement_type.lower()
+    return ("curve" in placement_type) or ("line" in placement_type)
 
 
 def _document_identity(doc):
@@ -132,20 +133,16 @@ def _symbol_cache_key(element, view, obb_width=0.0, obb_height=0.0):
     family_name, type_name = _safe_type_sig_parts(element)
     view_scale = int(round(float(getattr(view, "Scale", 1))))
     detail_level = str(int(view.DetailLevel))
-    transform = element.GetTotalTransform()
-    orientation_bucket = _orientation_bucket_from_transform(transform)
     doc_identity = _document_identity(getattr(view, "Document", None))
     doc_scope = hashlib.sha1(doc_identity.encode("utf-8")).hexdigest()[:12]
-    length_bucket_in = int(math.ceil(max(obb_width, obb_height) * 12.0))
+    is_line_based = _is_line_based_family_instance(element)
     # Stable type-id disambiguates Symbol-less instances (line-based families resolved via
     # GetTypeId) that share a placeholder family name, preventing cross-family cache collisions.
     type_id_int = _extract_type_id_int(element)
-    # Cache schema note: detail_level, length_bucket_in, and type_id_int were added to the key.
-    # Existing symbol_rasters caches built without these fields are intentionally invalidated
-    # and will rebuild on misses.
-    key = "{}|{}|{}|{}|{}|{}|{}in|tid{}".format(
-        doc_scope, family_name, type_name, view_scale, detail_level, orientation_bucket,
-        length_bucket_in, type_id_int
+    # Canonical cache key is type-local and intentionally excludes observed pose/length
+    # fields such as orientation buckets and instance-length buckets.
+    key = "{}|{}|{}|{}|{}|line{}|tid{}".format(
+        doc_scope, family_name, type_name, view_scale, detail_level, int(bool(is_line_based)), type_id_int
     )
     return (
         key,
@@ -153,9 +150,8 @@ def _symbol_cache_key(element, view, obb_width=0.0, obb_height=0.0):
         type_name,
         view_scale,
         detail_level,
-        orientation_bucket,
+        is_line_based,
         doc_scope,
-        length_bucket_in,
         type_id_int,
     )
 
@@ -196,8 +192,6 @@ def _cache_lookup_diag_payload(
     type_id_int,
     view_scale,
     detail_level,
-    orientation_bucket,
-    length_bucket_in,
     is_line_based,
 ):
     return {
@@ -209,8 +203,6 @@ def _cache_lookup_diag_payload(
         "type_id_int": int(type_id_int),
         "view_scale": int(view_scale),
         "detail_level": str(detail_level),
-        "orientation_bucket": str(orientation_bucket),
-        "length_bucket_in": int(length_bucket_in),
         "is_line_based_lookup": bool(is_line_based),
     }
 
@@ -244,8 +236,7 @@ def _validate_cache_entry(cached, expected):
         "family_name",
         "view_scale",
         "detail_level",
-        "orientation_bucket",
-        "length_bucket_in",
+        "is_line_based",
         "obb_width",
         "obb_height",
         "points",
@@ -260,8 +251,7 @@ def _validate_cache_entry(cached, expected):
         "family_name",
         "view_scale",
         "detail_level",
-        "orientation_bucket",
-        "length_bucket_in",
+        "is_line_based",
     ):
         if cached.get(name) != expected.get(name):
             return None, "missing required fields"
@@ -429,12 +419,57 @@ def _subsample_points(points, max_points):
     return points[:: max(1, step)]
 
 
-def _translate_points(points_xy, placement_point):
+def _instance_pose_in_view_2d(transform, view):
+    origin_xy = to_view_local_2d([transform.Origin], view)[0]
+    right = view.RightDirection
+    up = view.UpDirection
+    bx = transform.BasisX
+    raw_dx = float(bx.X) * float(right.X) + float(bx.Y) * float(right.Y) + float(bx.Z) * float(right.Z)
+    raw_dy = float(bx.X) * float(up.X) + float(bx.Y) * float(up.Y) + float(bx.Z) * float(up.Z)
+    mag = math.hypot(raw_dx, raw_dy)
+    if mag <= 1e-9:
+        dx, dy = 1.0, 0.0
+    else:
+        dx, dy = raw_dx / mag, raw_dy / mag
+    mirrored = bool(float(getattr(transform, "Determinant", 1.0)) < 0.0)
+    angle_deg = math.degrees(math.atan2(dy, dx))
+    return origin_xy, (dx, dy), mirrored, angle_deg
+
+
+def _actual_instance_length_ft(element, obb_width=0.0, obb_height=0.0):
+    try:
+        location = getattr(element, "Location", None)
+        curve = getattr(location, "Curve", None)
+        if curve is not None:
+            length = float(getattr(curve, "Length", 0.0))
+            if length > 1e-9:
+                return length
+    except Exception:
+        pass
+    return max(float(obb_width), float(obb_height), 1e-9)
+
+
+def _apply_canonical_instance_transform(
+    points_xy,
+    placement_point,
+    axis_x,
+    mirrored=False,
+    length_scale_x=1.0,
+):
     px, py = float(placement_point[0]), float(placement_point[1])
+    dx, dy = float(axis_x[0]), float(axis_x[1])
+    # Build the local Y axis from local X; mirroring flips handedness in canonical local frame.
+    ey_x = -dy
+    ey_y = dx
+    if mirrored:
+        ey_x *= -1.0
+        ey_y *= -1.0
     out = []
     for xy in points_xy or []:
         try:
-            out.append([float(xy[0]) + px, float(xy[1]) + py])
+            x = float(xy[0]) * float(length_scale_x)
+            y = float(xy[1])
+            out.append([px + (x * dx) + (y * ey_x), py + (x * dy) + (y * ey_y)])
         except Exception:
             continue
     return out
@@ -679,35 +714,12 @@ def _create_fresh_view_with_symbol(doc, view, element, obb_width=0.0, obb_height
                 tmp_inst = doc.Create.NewFamilyInstance(XYZ(0, 0, 0), symbol, tmp_view)
             except Exception:
                 # Fall back to curve overload for line-based families.
-                # Project the element's world-space BasisX onto the source view's RightDirection
-                # and UpDirection axes so the driving line is view-relative, not a raw XY world
-                # projection. This handles section/elevation views where the driving direction
-                # has a significant Z component that the plain bx.X/bx.Y path would drop.
+                # Canonical line-based cache generation uses a fixed 12" local +X segment
+                # (left-to-right) and does not derive length/orientation from observed instance pose.
                 from Autodesk.Revit.DB import Line
 
-                length_ft = max(obb_width, obb_height)
-                length_ft = max(length_ft, 1.0 / 12.0)  # minimum 1 inch
+                length_ft = _CANONICAL_LINE_LENGTH_FT
                 dx, dy = 1.0, 0.0
-                try:
-                    tx = element.GetTotalTransform()
-                    bx = tx.BasisX
-                    right = view.RightDirection
-                    up = view.UpDirection
-                    raw_dx = (
-                        float(bx.X) * float(right.X)
-                        + float(bx.Y) * float(right.Y)
-                        + float(bx.Z) * float(right.Z)
-                    )
-                    raw_dy = (
-                        float(bx.X) * float(up.X)
-                        + float(bx.Y) * float(up.Y)
-                        + float(bx.Z) * float(up.Z)
-                    )
-                    norm = math.sqrt(raw_dx * raw_dx + raw_dy * raw_dy)
-                    if norm > 1e-9:
-                        dx, dy = raw_dx / norm, raw_dy / norm
-                except Exception:
-                    pass
                 end_pt = XYZ(dx * length_ft, dy * length_ft, 0.0)
                 line = Line.CreateBound(XYZ(0, 0, 0), end_pt)
                 tmp_inst = doc.Create.NewFamilyInstance(line, symbol, tmp_view)
@@ -809,7 +821,7 @@ def _collect_points_for_element(view, doc, element, config):
     if transform is None or bbox is None:
         return None, None
 
-    placement_point = to_view_local_2d([transform.Origin], view)[0]
+    placement_point, axis_x, is_mirrored, rotation_deg = _instance_pose_in_view_2d(transform, view)
     obb_width = abs(float(bbox.Max.X - bbox.Min.X))
     obb_height = abs(float(bbox.Max.Y - bbox.Min.Y))
 
@@ -820,9 +832,8 @@ def _collect_points_for_element(view, doc, element, config):
             type_name,
             view_scale,
             detail_level,
-            orientation_bucket,
+            is_line_based,
             doc_scope,
-            length_bucket_in,
             type_id_int,
         ) = _symbol_cache_key(element, view, obb_width=obb_width, obb_height=obb_height)
     except Exception as exc:
@@ -834,7 +845,6 @@ def _collect_points_for_element(view, doc, element, config):
         return None, None
 
     cache_path = _cache_file_path(config, family_name, cache_key)
-    is_line_based_lookup = getattr(element, "Symbol", None) is None
     lookup_diag = _cache_lookup_diag_payload(
         cache_key=cache_key,
         cache_path=cache_path,
@@ -844,9 +854,7 @@ def _collect_points_for_element(view, doc, element, config):
         type_id_int=type_id_int,
         view_scale=view_scale,
         detail_level=detail_level,
-        orientation_bucket=orientation_bucket,
-        length_bucket_in=length_bucket_in,
-        is_line_based=is_line_based_lookup,
+        is_line_based=is_line_based,
     )
     _write_diag_json("cache_lookup_started", lookup_diag)
     cached, miss_reason = _read_cache_entry(cache_path)
@@ -856,14 +864,30 @@ def _collect_points_for_element(view, doc, element, config):
         "family_name": family_name,
         "view_scale": view_scale,
         "detail_level": detail_level,
-        "orientation_bucket": orientation_bucket,
-        "length_bucket_in": length_bucket_in,
+        "is_line_based": is_line_based,
+    }
+    actual_length_ft = _actual_instance_length_ft(element, obb_width=obb_width, obb_height=obb_height)
+    length_scale_x = (actual_length_ft / _CANONICAL_LINE_LENGTH_FT) if is_line_based else 1.0
+    transform_diag = {
+        "canonical_length_ft": float(_CANONICAL_LINE_LENGTH_FT) if is_line_based else None,
+        "actual_length_ft": float(actual_length_ft) if is_line_based else None,
+        "length_scale_x": float(length_scale_x),
+        "rotation_deg": float(rotation_deg),
+        "mirrored": bool(is_mirrored),
+        "is_line_based": bool(is_line_based),
     }
     if miss_reason is None:
         cached_points, miss_reason = _validate_cache_entry(cached, expected_entry)
         if miss_reason is None:
             _write_diag_json("cache_hit", lookup_diag)
-            return elem_id, _translate_points(cached_points, placement_point)
+            _write_diag_json("instance_transform_applied", dict(lookup_diag, **transform_diag))
+            return elem_id, _apply_canonical_instance_transform(
+                cached_points,
+                placement_point=placement_point,
+                axis_x=axis_x,
+                mirrored=is_mirrored,
+                length_scale_x=length_scale_x,
+            )
     _write_diag_json("cache_miss_reason", dict(lookup_diag, reason=str(miss_reason or "unknown")))
     _write_diag_json("cache_miss", lookup_diag)
 
@@ -874,8 +898,7 @@ def _collect_points_for_element(view, doc, element, config):
             "family_name": family_name,
             "view_scale": view_scale,
             "detail_level": detail_level,
-            "orientation_bucket": orientation_bucket,
-            "length_bucket_in": length_bucket_in,
+            "is_line_based": is_line_based,
             "doc_scope": doc_scope,
             "obb_width": obb_width,
             "obb_height": obb_height,
@@ -886,10 +909,12 @@ def _collect_points_for_element(view, doc, element, config):
         _write_cache_entry(cache_path, entry)
         return elem_id, []
 
-    pad = max(obb_width, obb_height) * 0.25
+    canonical_width = _CANONICAL_LINE_LENGTH_FT if is_line_based else obb_width
+    canonical_height = obb_height
+    pad = max(canonical_width, canonical_height) * 0.25
     pad = max(pad, 0.1)
-    raster_world_width = obb_width + (2.0 * pad)
-    raster_world_height = obb_height + (2.0 * pad)
+    raster_world_width = canonical_width + (2.0 * pad)
+    raster_world_height = canonical_height + (2.0 * pad)
 
     tmp_view = None
     png_path = None
@@ -937,8 +962,17 @@ def _collect_points_for_element(view, doc, element, config):
                 img_width, img_height, lum = _png_to_luminance(png_path)
                 edges = _edge_pixels(img_width, img_height, lum)
                 for col, row in edges:
-                    x_rel = ((float(col) / float(max(1, img_width))) - 0.5) * raster_world_width
-                    y_rel = ((float(row) / float(max(1, img_height))) - 0.5) * raster_world_height
+                    if is_line_based:
+                        # Canonical line symbol local frame:
+                        # - origin at left endpoint
+                        # - +X along line direction
+                        # - points are type-canonical (not yet mirrored/rotated/translated to instance)
+                        x_rel = (float(col) / float(max(1, img_width))) * raster_world_width - pad
+                        y_rel = ((float(row) / float(max(1, img_height))) - 0.5) * raster_world_height
+                    else:
+                        # Canonical symbol-local point cache (type-local, pose-free representation).
+                        x_rel = ((float(col) / float(max(1, img_width))) - 0.5) * raster_world_width
+                        y_rel = ((float(row) / float(max(1, img_height))) - 0.5) * raster_world_height
                     points_xy_rel.append([x_rel, y_rel])
             except Exception as exc:
                 warnings.warn(
@@ -951,7 +985,14 @@ def _collect_points_for_element(view, doc, element, config):
                 return None, None
 
         points_xy_rel = _subsample_points(points_xy_rel, int(config.get("symbol_raster_max_points", 200)))
-        points_xy = _translate_points(points_xy_rel, placement_point)
+        points_xy = _apply_canonical_instance_transform(
+            points_xy_rel,
+            placement_point=placement_point,
+            axis_x=axis_x,
+            mirrored=is_mirrored,
+            length_scale_x=length_scale_x,
+        )
+        _write_diag_json("instance_transform_applied", dict(lookup_diag, **transform_diag))
 
         entry = {
             "cache_schema": "symbol_raster.v1",
@@ -959,8 +1000,7 @@ def _collect_points_for_element(view, doc, element, config):
             "family_name": family_name,
             "view_scale": view_scale,
             "detail_level": detail_level,
-            "orientation_bucket": orientation_bucket,
-            "length_bucket_in": length_bucket_in,
+            "is_line_based": is_line_based,
             "doc_scope": doc_scope,
             "obb_width": obb_width,
             "obb_height": obb_height,
