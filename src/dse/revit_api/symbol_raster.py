@@ -523,6 +523,36 @@ def _create_fresh_view_with_symbol(doc, view, element):
 
         symbol = getattr(element, "Symbol", None)
         if symbol is None:
+            _write_diag_json(
+                "symbol_none_early_exit",
+                {
+                    "element_id": _safe_int_element_id(element),
+                    "element_class": type(element).__name__,
+                    "category": str(getattr(getattr(element, "Category", None), "Name", "unknown")),
+                    "family_placement_type": str(
+                        getattr(
+                            getattr(getattr(element, "Symbol", None), "Family", None),
+                            "FamilyPlacementType",
+                            "unknown",
+                        )
+                    ),
+                    "has_get_type_id": hasattr(element, "GetTypeId"),
+                },
+            )
+            return None
+        from Autodesk.Revit.DB import FamilyPlacementType
+
+        family = getattr(symbol, "Family", None)
+        pt = getattr(family, "FamilyPlacementType", None) if family else None
+        if pt is not None and pt != FamilyPlacementType.ViewBased:
+            _write_diag_json(
+                "symbol_skipped_non_view_based",
+                {
+                    "placement_type": str(int(pt)),
+                    "family_name": str(getattr(family, "Name", "unknown")),
+                    "category": str(getattr(getattr(symbol, "Category", None), "Name", "unknown")),
+                },
+            )
             return None
 
         with scoped_transaction(doc, "DSE: create fresh view for symbol raster"):
@@ -552,9 +582,13 @@ def _create_fresh_view_with_symbol(doc, view, element):
 
         return tmp_view
     except Exception as exc:
+        family_name_diag = "unknown"
+        symbol_name_diag = "unknown"
         try:
             family = getattr(symbol, "Family", None)
             pt = str(getattr(family, "FamilyPlacementType", "unknown")) if family else "no_family"
+            family_name_diag = str(getattr(family, "Name", "unknown")) if family else "no_family"
+            symbol_name_diag = str(getattr(symbol, "Name", "unknown")) if symbol is not None else "no_symbol"
         except Exception:
             pt = "error_reading"
         _write_diag_json(
@@ -562,7 +596,11 @@ def _create_fresh_view_with_symbol(doc, view, element):
             {
                 "reason": str(exc),
                 "type": type(exc).__name__,
-                "family_placement_type": pt,
+                "family_placement_type": str(pt),
+                "family_name": family_name_diag,
+                "symbol_name": symbol_name_diag,
+                "element_class": type(element).__name__,
+                "element_category": str(getattr(getattr(element, "Category", None), "Name", "unknown")),
             },
         )
         if tmp_view is not None:
