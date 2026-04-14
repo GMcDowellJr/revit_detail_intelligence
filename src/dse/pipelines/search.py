@@ -731,7 +731,11 @@ def _load_all_cached_bundles(cache_root):
 
 
 def _extract_bundle_for_index(view, symbol_raster_lookup_callback=None):
-    return _extract_bundle_with_cache(view, symbol_raster_lookup_callback=symbol_raster_lookup_callback)
+    return _extract_bundle_with_cache(
+        view,
+        write_legacy_cache_record=False,
+        symbol_raster_lookup_callback=symbol_raster_lookup_callback,
+    )
 
 def index_views(views):
     cache_root = resolve_view_cache_root(CONFIG)
