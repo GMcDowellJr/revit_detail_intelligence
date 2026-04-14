@@ -188,6 +188,7 @@ def approx_symmetric_chamfer(a_points, b_points):
 def equivalence_distance(points_a, points_b, quantization, allow_rotations, allow_mirror):
     bins_a = dedupe_quantized_points(points_a, quantization)
     bins_b = dedupe_quantized_points(points_b, quantization)
+    bins_a = transform_points(bins_a, rotation_deg=0, mirror=False)
 
     rotations = [0, 90, 180, 270] if allow_rotations else [0]
     mirrors = [False, True] if allow_mirror else [False]
@@ -195,8 +196,8 @@ def equivalence_distance(points_a, points_b, quantization, allow_rotations, allo
     best = float("inf")
     for rotation in rotations:
         for mirror in mirrors:
-            b_variant = transform_points(bins_b, rotation_deg=rotation, mirror=mirror)
-            dist = approx_symmetric_chamfer(bins_a, b_variant)
+            bins_b_variant = transform_points(bins_b, rotation_deg=rotation, mirror=mirror)
+            dist = approx_symmetric_chamfer(bins_a, bins_b_variant)
             if dist < best:
                 best = dist
     return best
@@ -661,9 +662,15 @@ def main():
 
     records = []
     malformed = 0
+    skipped_schema = 0
     for path in files:
         try:
             rec = load_record(path, args.strict_quantization)
+            if rec.cache_schema != "symbol_raster.v1":
+                skipped_schema += 1
+                if args.verbose:
+                    print(f"[skip] non-symbol_raster schema in {path}: {rec.cache_schema}")
+                continue
             records.append(rec)
         except Exception as exc:
             malformed += 1
@@ -722,6 +729,7 @@ def main():
         "input_file_count": len(files),
         "valid_record_count": len(records),
         "malformed_file_count": malformed,
+        "skipped_non_symbol_raster_count": skipped_schema,
         "family_filter": args.family_report or None,
         "strict_quantization": args.strict_quantization,
         "equiv_threshold": args.equiv_threshold,
@@ -781,7 +789,10 @@ def main():
         plot_status = maybe_make_plots(args.outdir, group_rows, schema_rows, orientation_rows)
 
     print("\n=== Symbol Raster Cache Key Analysis ===")
-    print(f"Records analyzed: {len(records)} (input files={len(files)}, malformed={malformed})")
+    print(
+        f"Records analyzed: {len(records)} "
+        f"(input files={len(files)}, malformed={malformed}, non_symbol_raster_skipped={skipped_schema})"
+    )
     print(f"Base groups: {len(group_rows)}")
     print(f"Average redundancy ratio: {summary['avg_redundancy_ratio']:.3f}")
     print("\nTop redundant base groups:")
