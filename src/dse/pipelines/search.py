@@ -731,13 +731,18 @@ def _load_all_cached_bundles(cache_root):
 
 
 
-def _extract_bundle_for_index(view):
+def _extract_bundle_for_index(view, symbol_raster_lookup_callback=None):
     try:
         sig = inspect.signature(_extract_bundle_with_cache)
     except Exception:
         sig = None
+    kwargs = {}
     if sig is not None and "write_legacy_cache_record" in sig.parameters:
-        return _extract_bundle_with_cache(view, write_legacy_cache_record=False)
+        kwargs["write_legacy_cache_record"] = False
+    if sig is not None and "symbol_raster_lookup_callback" in sig.parameters:
+        kwargs["symbol_raster_lookup_callback"] = symbol_raster_lookup_callback
+    if kwargs:
+        return _extract_bundle_with_cache(view, **kwargs)
     return _extract_bundle_with_cache(view)
 
 def index_views(views):
@@ -754,9 +759,8 @@ def index_views(views):
             continue
         extraction_start = time.perf_counter()
         try:
-            bundle, status = _extract_bundle_with_cache(
+            bundle, status = _extract_bundle_for_index(
                 view,
-                write_legacy_cache_record=False,
                 symbol_raster_lookup_callback=accum.accumulate_symbol_raster_lookup,
             )
         except Exception as exc:
