@@ -258,6 +258,31 @@ def test_index_views_writes_doc_scoped_cache_without_legacy_entry(monkeypatch, t
     assert not (out_dir / "view_1.json").exists()
 
 
+def test_index_views_second_run_hits_disk_from_doc_scoped_cache(monkeypatch, tmp_path):
+    class FakeId(object):
+        def __init__(self, value):
+            self.IntegerValue = value
+
+    class FakeView(object):
+        def __init__(self, value):
+            self.Id = FakeId(value)
+
+    cache_root = str(tmp_path / "cache")
+    monkeypatch.setattr(search, "is_view", lambda value: hasattr(value, "Id"))
+    monkeypatch.setattr(search, "resolve_view_cache_root", lambda _cfg: cache_root)
+    monkeypatch.setattr(search, "extract_feature_bundle", lambda view, state_ctx=None: _bundle(view.Id.IntegerValue))
+    monkeypatch.setattr(search, "_build_state_context", lambda *_args, **_kwargs: {"state_hash": "s1"})
+    monkeypatch.setattr(search, "generate_and_cache_view_preview", lambda *_args, **_kwargs: "preview.png")
+
+    search.GLOBAL_VIEW_FEATURE_CACHE.entries = {}
+    first = search.index_views([FakeView(1)])
+    search.GLOBAL_VIEW_FEATURE_CACHE.entries = {}
+    second = search.index_views([FakeView(1)])
+
+    assert first["cache_statuses"][1] == "rebuilt"
+    assert second["cache_statuses"][1] == "hit_disk"
+
+
 def test_load_all_cached_bundles_empty_dir(tmp_path):
     cache_root = str(tmp_path / "cache")
     os.makedirs(os.path.join(cache_root, "view_features"), exist_ok=True)

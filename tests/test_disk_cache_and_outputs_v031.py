@@ -2,8 +2,11 @@ import os
 
 from dse.cache.view_feature_cache import (
     ViewFeatureCache,
+    ViewFeatureCacheEntry,
+    read_cache_record,
     get_cached_bundle_with_diagnostics,
     put_bundle_in_caches,
+    serialize_cache_entry,
 )
 from dse.outputs.contact_folder import create_contact_folder
 from dse.outputs.contact_sheet import _save_png
@@ -17,12 +20,20 @@ def _write_tiny_png(path):
     _save_png(path, 2, 2, bytes((255, 0, 0) * 4))
 
 
-def _bundle(view_id=10, state_hash="abc"):
+def _bundle(view_id=10, state_hash="abc", source_doc_id="doc-a", source_doc_name="Doc A"):
     return ViewFeatureBundle(
-        state_signature=ViewStateSignature(view_id=view_id, view_kind="DRAFTING", state_hash=state_hash),
+        state_signature=ViewStateSignature(
+            view_id=view_id,
+            view_kind="DRAFTING",
+            source_doc_id=source_doc_id,
+            source_doc_name=source_doc_name,
+            state_hash=state_hash,
+        ),
         search_features=ViewSearchFeatures(
             view_id=view_id,
             view_kind="DRAFTING",
+            source_doc_id=source_doc_id,
+            source_doc_name=source_doc_name,
             tokens_stable={"type_sig:A|B": 1.5},
             tokens_context={"line_style:Thin": 1.0},
             geom_hist_knn_endpoints=[0.2, 0.8],
@@ -71,6 +82,79 @@ def test_disk_cache_roundtrip_and_invalidation(tmp_path):
     )
     assert payload2 is None
     assert status2 == "invalidated"
+
+
+def test_read_cache_record_finds_doc_scoped_file(tmp_path):
+    cache_root = str(tmp_path / "cache")
+    view_dir = tmp_path / "cache" / "view_features"
+    view_dir.mkdir(parents=True, exist_ok=True)
+
+    entry = ViewFeatureCacheEntry(
+        view_id=42,
+        state_hash="s42",
+        schema_version="s.v1",
+        pipeline_version="p1",
+        payload=_bundle(view_id=42, state_hash="s42"),
+    )
+    path = view_dir / "view_42__doc_deadbeefcafe.json"
+    path.write_text(serialize_cache_entry(entry), encoding="utf-8")
+
+    loaded = read_cache_record(cache_root, 42)
+    assert loaded is not None
+    assert loaded.state_hash == "s42"
+
+
+def test_cache_roundtrip_via_doc_scoped_file(tmp_path):
+    cache_root = str(tmp_path / "cache")
+    mem = ViewFeatureCache()
+    bundle = _bundle(view_id=88, state_hash="s88", source_doc_id="doc-88", source_doc_name="Doc 88")
+
+    put_bundle_in_caches(
+        in_memory_cache=mem,
+        cache_root=cache_root,
+        view_id=88,
+        state_hash="s88",
+        pipeline_version="p1",
+        schema_version="s.v1",
+        payload=bundle,
+    )
+
+    view_dir = tmp_path / "cache" / "view_features"
+    doc_scoped = sorted([name for name in os.listdir(str(view_dir)) if name.startswith("view_88__doc_")])
+    assert len(doc_scoped) == 1
+    assert not (view_dir / "view_88.json").exists()
+
+    mem.entries = {}
+    payload, status = get_cached_bundle_with_diagnostics(
+        in_memory_cache=mem,
+        cache_root=cache_root,
+        view_id=88,
+        state_hash="s88",
+        pipeline_version="p1",
+        schema_version="s.v1",
+    )
+    assert payload is not None
+    assert status == "hit_disk"
+
+
+def test_legacy_path_fallback_still_readable(tmp_path):
+    cache_root = str(tmp_path / "cache")
+    view_dir = tmp_path / "cache" / "view_features"
+    view_dir.mkdir(parents=True, exist_ok=True)
+
+    entry = ViewFeatureCacheEntry(
+        view_id=53,
+        state_hash="s53",
+        schema_version="s.v1",
+        pipeline_version="p1",
+        payload=_bundle(view_id=53, state_hash="s53"),
+    )
+    legacy_path = view_dir / "view_53.json"
+    legacy_path.write_text(serialize_cache_entry(entry), encoding="utf-8")
+
+    loaded = read_cache_record(cache_root, 53)
+    assert loaded is not None
+    assert loaded.view_id == 53
 
 
 def test_many_to_many_edges_and_output_files(tmp_path):

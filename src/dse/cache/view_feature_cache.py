@@ -1,3 +1,5 @@
+import glob
+import hashlib
 import json
 import os
 import warnings
@@ -91,8 +93,25 @@ def deserialize_cache_entry(payload_txt: str) -> ViewFeatureCacheEntry:
     )
 
 
-def cache_file_for_view(cache_root: str, view_id: int) -> str:
-    return os.path.join(cache_root, "view_features", "view_{}.json".format(int(view_id)))
+def _doc_scope_from_bundle(bundle: ViewFeatureBundle) -> Optional[str]:
+    search_features = getattr(bundle, "search_features", None)
+    source_doc_id = str(getattr(search_features, "source_doc_id", "") or "").strip()
+    source_doc_name = str(getattr(search_features, "source_doc_name", "") or "").strip()
+    if not source_doc_id and not source_doc_name:
+        return None
+    return hashlib.sha1("{}|{}".format(source_doc_id, source_doc_name).encode("utf-8")).hexdigest()[:12]
+
+
+def cache_file_for_view(cache_root: str, view_id: int, doc_scope: Optional[str] = None) -> str:
+    view_dir = os.path.join(cache_root, "view_features")
+    if doc_scope:
+        filename = "view_{}__doc_{}.json".format(int(view_id), doc_scope)
+        return os.path.join(view_dir, filename)
+    pattern = os.path.join(view_dir, "view_{}__doc_*.json".format(int(view_id)))
+    matches = sorted(glob.glob(pattern))
+    if matches:
+        return matches[0]
+    return os.path.join(view_dir, "view_{}.json".format(int(view_id)))
 
 
 def read_cache_record(cache_root: str, view_id: int) -> Optional[ViewFeatureCacheEntry]:
@@ -112,7 +131,8 @@ def read_cache_record(cache_root: str, view_id: int) -> Optional[ViewFeatureCach
 
 
 def write_cache_record(cache_root: str, entry: ViewFeatureCacheEntry) -> str:
-    path = cache_file_for_view(cache_root, entry.view_id)
+    doc_scope = _doc_scope_from_bundle(entry.payload)
+    path = cache_file_for_view(cache_root, entry.view_id, doc_scope=doc_scope)
     ensure_dir(os.path.dirname(path))
     with open(path, "w", encoding="utf-8") as handle:
         handle.write(serialize_cache_entry(entry))
