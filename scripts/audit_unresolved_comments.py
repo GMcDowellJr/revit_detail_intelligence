@@ -121,17 +121,17 @@ def fetch_merged_prs(token, since_dt):
         data = _graphql(token, _PR_QUERY, {"owner": OWNER, "name": NAME, "cursor": cursor})
         pr_conn = data["repository"]["pullRequests"]
 
-        stop_paging = False
         for node in pr_conn["nodes"]:
             merged_at_str = node.get("mergedAt")
             if not merged_at_str:
                 continue
 
             merged_at = datetime.datetime.fromisoformat(merged_at_str.replace("Z", "+00:00"))
+            # The PR list is ordered by UPDATED_AT, not MERGED_AT, so a recently
+            # commented-on old PR can appear before a newer merge. Skip out-of-window
+            # PRs but keep paging — do NOT break here.
             if merged_at < since_dt:
-                # Results are newest-first; once we pass the window we are done
-                stop_paging = True
-                break
+                continue
 
             unresolved = [t for t in node["reviewThreads"]["nodes"] if not t["isResolved"]]
             if not unresolved:
@@ -148,7 +148,7 @@ def fetch_merged_prs(token, since_dt):
                 }
             )
 
-        if stop_paging or not pr_conn["pageInfo"]["hasNextPage"]:
+        if not pr_conn["pageInfo"]["hasNextPage"]:
             break
         cursor = pr_conn["pageInfo"]["endCursor"]
 
