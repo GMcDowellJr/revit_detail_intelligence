@@ -1,3 +1,4 @@
+import importlib
 import json
 import sys
 import types
@@ -30,10 +31,15 @@ if "Autodesk.Revit.DB" not in sys.modules:
     sys.modules["Autodesk.Revit"] = revit_mod
     sys.modules["Autodesk.Revit.DB"] = db_mod
 
-from dse.revit_api import symbol_raster
+
+def _load_symbol_raster():
+    if "dse.revit_api.symbol_raster" in sys.modules:
+        return sys.modules["dse.revit_api.symbol_raster"]
+    return importlib.import_module("dse.revit_api.symbol_raster")
 
 
 def test_diag_events_buffer_until_flush(tmp_path, monkeypatch):
+    symbol_raster = _load_symbol_raster()
     diag_path = tmp_path / "symbol_raster_diagnostics.json"
     monkeypatch.setattr(symbol_raster, "_DIAG_JSON_PATH", str(diag_path))
     symbol_raster._DIAG_ROWS_BUFFER[:] = []
@@ -50,6 +56,7 @@ def test_diag_events_buffer_until_flush(tmp_path, monkeypatch):
 
 
 def test_diag_flush_appends_existing_json_array(tmp_path, monkeypatch):
+    symbol_raster = _load_symbol_raster()
     diag_path = tmp_path / "symbol_raster_diagnostics.json"
     seed = [{"event": "existing", "ts_utc": "2026-01-01T00:00:00+00:00", "payload": {"ok": True}}]
     diag_path.write_text(json.dumps(seed), encoding="utf-8")
@@ -66,6 +73,7 @@ def test_diag_flush_appends_existing_json_array(tmp_path, monkeypatch):
 
 
 def test_collect_raster_points_flushes_diagnostics_once(monkeypatch):
+    symbol_raster = _load_symbol_raster()
     calls = {"flush": 0}
 
     def _flush_spy():
