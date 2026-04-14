@@ -524,20 +524,6 @@ def _create_fresh_view_with_symbol(doc, view, element):
         symbol = getattr(element, "Symbol", None)
         if symbol is None:
             return None
-        from Autodesk.Revit.DB import FamilyPlacementType
-
-        family = getattr(symbol, "Family", None)
-        pt = getattr(family, "FamilyPlacementType", None) if family else None
-        if pt is not None and pt != FamilyPlacementType.ViewBased:
-            _write_diag_json(
-                "symbol_skipped_non_view_based",
-                {
-                    "placement_type": str(int(pt)),
-                    "family_name": str(getattr(family, "Name", "unknown")),
-                    "category": str(getattr(getattr(symbol, "Category", None), "Name", "unknown")),
-                },
-            )
-            return None
 
         with scoped_transaction(doc, "DSE: create fresh view for symbol raster"):
             tmp_view = ViewDrafting.Create(doc, drafting_vft_id)
