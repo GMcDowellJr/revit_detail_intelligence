@@ -211,7 +211,9 @@ def test_extract_bundle_for_index_delegates_without_compat_shim(monkeypatch):
         fake_extract,
     )
 
-    callback = lambda _row: None
+    def callback(_row):
+        return None
+
     bundle, status = search._extract_bundle_for_index(FakeView(), symbol_raster_lookup_callback=callback)
 
     assert bundle.search_features.view_id == 31
