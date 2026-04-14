@@ -285,7 +285,11 @@ def test_collect_points_cache_hit_applies_line_length_scaling(monkeypatch):
     monkeypatch.setattr(symbol_raster, "_read_cache_entry", lambda _path: (cached_entry, None))
     monkeypatch.setattr(symbol_raster, "_write_diag_json", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(symbol_raster, "_actual_instance_length_ft", lambda *_args, **_kwargs: 2.0)
-    monkeypatch.setattr(symbol_raster, "_instance_pose_in_view_2d", lambda *_args, **_kwargs: ((5.0, 5.0), (1.0, 0.0), False, 0.0))
+    monkeypatch.setattr(
+        symbol_raster,
+        "_instance_pose_in_view_2d",
+        lambda *_args, **_kwargs: ((5.0, 5.0), (1.0, 0.0), False, 0.0),
+    )
 
     _elem_id, points = symbol_raster._collect_points_for_element(view, object(), elem, {})
     assert points == [[7.0, 5.0]]
@@ -350,7 +354,11 @@ def test_collect_points_cache_hit_applies_point_rotation_and_mirror(monkeypatch)
     monkeypatch.setattr(symbol_raster, "_cache_file_path", lambda *_args, **_kwargs: "cache.json")
     monkeypatch.setattr(symbol_raster, "_read_cache_entry", lambda _path: (cached_entry, None))
     monkeypatch.setattr(symbol_raster, "_write_diag_json", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(symbol_raster, "_instance_pose_in_view_2d", lambda *_args, **_kwargs: ((3.0, 4.0), (0.0, 1.0), True, 90.0))
+    monkeypatch.setattr(
+        symbol_raster,
+        "_instance_pose_in_view_2d",
+        lambda *_args, **_kwargs: ((3.0, 4.0), (0.0, 1.0), True, 90.0),
+    )
 
     _elem_id, points = symbol_raster._collect_points_for_element(view, object(), elem, {})
     assert points == [[5.0, 5.0]]
