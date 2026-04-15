@@ -9,6 +9,7 @@ from dse.io_paths import resolve_cache_root
 
 SEARCH_SIDECAR_SCHEMA = "sidecar.search.1.0"
 INDEX_SIDECAR_SCHEMA = "sidecar.index.1.2"
+INDEX_VIEWS_JSONL_SCHEMA = "sidecar.index.views.1.0"
 
 
 def percentile(sorted_values, p):
@@ -196,6 +197,7 @@ class IndexDiagnosticAccumulator:
                 perf[key] = default
 
         record = {
+            "schema_version": INDEX_VIEWS_JSONL_SCHEMA,
             "view_id": int(getattr(search, "view_id", -1)),
             "display_name": getattr(presentation, "display_name", ""),
             "cache_status": str(status),

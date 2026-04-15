@@ -6,6 +6,7 @@ import types
 from dse.models import ViewFeatureBundle, ViewPresentationSummary, ViewSearchFeatures, ViewStateSignature
 from dse.diagnostics.sidecars import (
     INDEX_SIDECAR_SCHEMA,
+    INDEX_VIEWS_JSONL_SCHEMA,
     SEARCH_SIDECAR_SCHEMA,
     IndexDiagnosticAccumulator,
     SearchDiagnosticBuilder,
@@ -267,6 +268,7 @@ def test_flush_view_record_creates_jsonl(tmp_path):
         rows = [json.loads(line) for line in handle.read().splitlines()]
 
     assert len(rows) == 2
+    assert rows[0]["schema_version"] == INDEX_VIEWS_JSONL_SCHEMA
     assert rows[0]["view_id"] == 1
     assert rows[0]["cache_status"] == "rebuilt"
     assert rows[0]["symbol_lookups_total"] == 0
@@ -304,6 +306,7 @@ def test_flush_view_record_survives_missing_optional_fields(tmp_path):
         row = json.loads(handle.read().splitlines()[0])
 
     assert row["view_id"] == 99
+    assert row["schema_version"] == INDEX_VIEWS_JSONL_SCHEMA
     assert row["cache_status"] == "rebuilt"
     assert row["extraction_ms"] is None
     assert row["pt_count"] is None
