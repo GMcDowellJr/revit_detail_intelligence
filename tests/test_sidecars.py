@@ -372,6 +372,16 @@ def test_repeated_type_misses_stay_cold_without_run_seen_bias():
     assert second.finalize()["cache_temperature"] == "cold"
 
 
+def test_cache_temperature_is_unchanged_by_cache_layer_field():
+    view = ViewSymbolRasterPerfAccumulator(run_seen_symbol_types=set())
+    view.accumulate({"symbol_type_key": "Door|A", "cache_hit": True, "cache_layer": "disk", "elapsed_ms": 1.0})
+    view.accumulate({"symbol_type_key": "Door|A", "cache_hit": True, "cache_layer": "memory", "elapsed_ms": 0.1})
+    summary = view.finalize()
+    assert summary["cache_temperature"] == "warm"
+    assert summary["new_symbol_types_built_in_view"] == 0
+    assert summary["reused_symbol_types_in_view"] == 0
+
+
 def test_finalize_cache_temperature_summary():
     accum = IndexDiagnosticAccumulator()
 

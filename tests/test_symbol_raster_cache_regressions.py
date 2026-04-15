@@ -3,6 +3,8 @@ import os
 import sys
 import types
 
+import pytest
+
 sys.modules.setdefault("clr", types.SimpleNamespace(AddReference=lambda *_args, **_kwargs: None))
 if "Autodesk.Revit.DB" not in sys.modules:
     db_mod = types.ModuleType("Autodesk.Revit.DB")
@@ -20,6 +22,12 @@ def _load_symbol_raster():
     if "dse.revit_api.symbol_raster" in sys.modules:
         return sys.modules["dse.revit_api.symbol_raster"]
     return importlib.import_module("dse.revit_api.symbol_raster")
+
+
+@pytest.fixture(autouse=True)
+def _clear_symbol_raster_memory_cache():
+    symbol_raster = _load_symbol_raster()
+    symbol_raster._RUN_MEMORY_SYMBOL_RASTER_CACHE.clear()
 
 
 def test_repeated_same_key_call_uses_cache_without_fresh_view(monkeypatch):
@@ -439,3 +447,112 @@ def test_cache_miss_uses_canonical_bounds_not_instance_obb(monkeypatch, tmp_path
     assert captured_entry["canonical_bounds"] == {"min_x": 0.0, "max_x": 1.0, "min_y": 0.0, "max_y": 1.0}
     assert points and abs(points[0][0] + 0.25) < 1e-9
     assert points and abs(points[0][1] - 1.25) < 1e-9
+
+
+def test_collect_canonical_points_uses_memory_after_disk_hit(monkeypatch):
+    symbol_raster = _load_symbol_raster()
+    context = {
+        "cache_key": "k1",
+        "family_name": "Fam",
+        "type_name": "Type",
+        "view_scale": 96,
+        "detail_level": "2",
+        "is_line_based": False,
+        "doc_scope": "doc",
+        "obb_width": 1.0,
+        "obb_height": 1.0,
+    }
+    cached_payload = {"payload": "from_disk"}
+    points_expected = [[1.0, 2.0]]
+    calls = {"read": 0, "validate": 0}
+    events = []
+
+    monkeypatch.setattr(symbol_raster, "_cache_file_path", lambda *_args, **_kwargs: "cache.json")
+
+    def _read(_path):
+        calls["read"] += 1
+        return cached_payload, None
+
+    def _validate(cached, _expected):
+        calls["validate"] += 1
+        assert cached is cached_payload
+        return points_expected, None
+
+    monkeypatch.setattr(symbol_raster, "_read_cache_entry", _read)
+    monkeypatch.setattr(symbol_raster, "_validate_cache_entry", _validate)
+
+    out1 = symbol_raster._collect_canonical_points_for_context(
+        view=object(),
+        doc=object(),
+        element=object(),
+        context=context,
+        config={},
+        diagnostic_callback=lambda row: events.append(row),
+    )
+    out2 = symbol_raster._collect_canonical_points_for_context(
+        view=object(),
+        doc=object(),
+        element=object(),
+        context=context,
+        config={},
+        diagnostic_callback=lambda row: events.append(row),
+    )
+
+    assert out1 == points_expected
+    assert out2 == points_expected
+    assert calls == {"read": 1, "validate": 1}
+    assert events[0]["cache_hit"] is True and events[0]["cache_layer"] == "disk"
+    assert events[1]["cache_hit"] is True and events[1]["cache_layer"] == "memory"
+
+
+def test_collect_canonical_points_uses_memory_after_rebuild(monkeypatch):
+    symbol_raster = _load_symbol_raster()
+    context = {
+        "cache_key": "k2",
+        "family_name": "Fam",
+        "type_name": "Type",
+        "view_scale": 96,
+        "detail_level": "2",
+        "is_line_based": False,
+        "doc_scope": "doc",
+        "obb_width": 1.0,
+        "obb_height": 1.0,
+        "elem_id": 1,
+    }
+    calls = {"read": 0, "fresh_view": 0}
+
+    monkeypatch.setattr(symbol_raster, "_cache_file_path", lambda *_args, **_kwargs: "cache.json")
+    monkeypatch.setattr(
+        symbol_raster,
+        "_read_cache_entry",
+        lambda _path: (calls.__setitem__("read", calls["read"] + 1) or (None, "file not found")),
+    )
+    monkeypatch.setattr(symbol_raster, "_write_cache_entry", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        symbol_raster,
+        "_create_fresh_view_with_symbol",
+        lambda *_args, **_kwargs: (calls.__setitem__("fresh_view", calls["fresh_view"] + 1) or object()),
+    )
+    monkeypatch.setattr(symbol_raster, "_export_temp_view_png", lambda *_args, **_kwargs: (None, None))
+    monkeypatch.setattr(symbol_raster, "_delete_temp_view", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(symbol_raster, "_cleanup_export_tmp_dir", lambda *_args, **_kwargs: None)
+
+    out1 = symbol_raster._collect_canonical_points_for_context(
+        view=object(),
+        doc=object(),
+        element=object(),
+        context=context,
+        config={},
+    )
+    out2 = symbol_raster._collect_canonical_points_for_context(
+        view=object(),
+        doc=object(),
+        element=object(),
+        context=context,
+        config={},
+    )
+
+    assert out1 == []
+    assert out2 == []
+    assert calls["fresh_view"] == 1
+    assert calls["read"] == 1
