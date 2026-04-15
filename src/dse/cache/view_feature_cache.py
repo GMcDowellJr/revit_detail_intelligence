@@ -94,11 +94,16 @@ def deserialize_cache_entry(payload_txt: str) -> ViewFeatureCacheEntry:
 
 
 def _doc_scope_from_source(source_doc_id: Optional[str], source_doc_name: Optional[str]) -> Optional[str]:
-    source_doc_id = str(source_doc_id or "").strip()
-    source_doc_name = str(source_doc_name or "").strip()
-    if not source_doc_id and not source_doc_name:
-        return None
-    return hashlib.sha1("{}|{}".format(source_doc_id, source_doc_name).encode("utf-8")).hexdigest()[:12]
+    source_doc_id = None if source_doc_id is None else str(source_doc_id).strip() or None
+    source_doc_name = None if source_doc_name is None else str(source_doc_name).strip() or None
+    payload = {
+        "source_doc_id": source_doc_id,
+        "source_doc_name": source_doc_name,
+    }
+    if payload["source_doc_id"] is None and payload["source_doc_name"] is None:
+        payload = {"source_scope": "<no-doc>"}
+    txt = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return hashlib.sha1(txt.encode("utf-8")).hexdigest()[:16]
 
 
 def _doc_scope_from_bundle(bundle: ViewFeatureBundle) -> Optional[str]:
