@@ -202,6 +202,13 @@ def _retained_png_path(config, family_name, cache_key):
     return os.path.join(png_root, "{}.png".format(key_hash))
 
 
+def _retain_debug_artifacts_enabled(config):
+    value = config.get("symbol_raster_retain_debug_artifacts", False)
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
+
+
 def _read_cache_entry(path):
     if not os.path.exists(path):
         return None, "file not found"
@@ -654,7 +661,7 @@ def _collect_canonical_points_for_context(
             raise RuntimeError("failed to duplicate/isolate temporary view")
         dpi = int(config.get("symbol_raster_dpi", 150))
         png_path, export_tmp_dir = _export_temp_view_png(doc, tmp_view, dpi)
-        if png_path and os.path.exists(png_path):
+        if png_path and os.path.exists(png_path) and _retain_debug_artifacts_enabled(config):
             retained_png_path = _retained_png_path(config, family_name, cache_key)
             with open(png_path, "rb") as src:
                 blob = src.read()
