@@ -1,6 +1,7 @@
 import os
 import sys
 import types
+import json
 
 from dse.cache.view_feature_cache import ViewFeatureCacheEntry, serialize_cache_entry
 from dse.models import ViewFeatureBundle, ViewPresentationSummary, ViewSearchFeatures, ViewStateSignature
@@ -300,6 +301,68 @@ def test_index_views_counts_preview_failures_when_generate_returns_none(monkeypa
     summary = search.index_views([FakeView(1), FakeView(2)])
     assert summary["indexed"] == 2
     assert summary["preview_failures"] == 2
+
+
+def test_index_views_jsonl_includes_per_view_symbol_perf_and_cache_temperature(monkeypatch, tmp_path):
+    class FakeId(object):
+        def __init__(self, value):
+            self.IntegerValue = value
+
+    class FakeView(object):
+        def __init__(self, value):
+            self.Id = FakeId(value)
+
+    monkeypatch.setattr(search, "is_view", lambda value: hasattr(value, "Id"))
+    monkeypatch.setattr(search, "resolve_view_cache_root", lambda _cfg: str(tmp_path / "cache"))
+    monkeypatch.setattr(
+        search,
+        "resolve_index_sidecar_path",
+        lambda _cfg: str(tmp_path / "cache" / "index_diagnostic.json"),
+    )
+
+    def fake_extract(view, write_legacy_cache_record=True, symbol_raster_lookup_callback=None):
+        if view.Id.IntegerValue == 1:
+            symbol_raster_lookup_callback(
+                {"symbol_type_key": "Door|A", "cache_hit": False, "miss_reason": "file not found", "elapsed_ms": 5.0}
+            )
+        elif view.Id.IntegerValue == 2:
+            symbol_raster_lookup_callback(
+                {"symbol_type_key": "Door|A", "cache_hit": True, "miss_reason": None, "elapsed_ms": 1.0}
+            )
+            symbol_raster_lookup_callback(
+                {"symbol_type_key": "Tag|B", "cache_hit": False, "miss_reason": "parse error", "elapsed_ms": 3.0}
+            )
+        return _bundle(view.Id.IntegerValue, cache_status="rebuilt"), "rebuilt"
+
+    monkeypatch.setattr(search, "_extract_bundle_with_cache", fake_extract)
+    monkeypatch.setattr(search, "generate_and_cache_view_preview", lambda *_args, **_kwargs: "preview.png")
+
+    summary = search.index_views([FakeView(1), FakeView(2), FakeView(3)])
+    with open(summary["index_jsonl"], "r", encoding="utf-8") as handle:
+        rows = [json.loads(line) for line in handle.read().splitlines()]
+    by_view = {row["view_id"]: row for row in rows}
+
+    assert by_view[1]["symbol_lookups_total"] == 1
+    assert by_view[1]["symbol_cache_misses"] == 1
+    assert by_view[1]["symbol_cache_miss_reasons"] == {"file not found": 1}
+    assert by_view[1]["cache_temperature"] == "cold"
+
+    assert by_view[2]["symbol_lookups_total"] == 2
+    assert by_view[2]["symbol_cache_hits"] == 1
+    assert by_view[2]["symbol_cache_misses"] == 1
+    assert by_view[2]["new_symbol_types_built_in_view"] == 1
+    assert by_view[2]["reused_symbol_types_in_view"] == 1
+    assert by_view[2]["cache_temperature"] == "mixed"
+
+    assert by_view[3]["symbol_lookups_total"] == 0
+    assert by_view[3]["cache_temperature"] == "none"
+
+    with open(summary["index_sidecar"], "r", encoding="utf-8") as handle:
+        sidecar = json.load(handle)
+    assert sidecar["symbol_raster_summary"]["lookups_total"] == 3
+    assert sidecar["cache_temperature_summary"]["cold"]["view_count"] == 1
+    assert sidecar["cache_temperature_summary"]["mixed"]["view_count"] == 1
+    assert sidecar["cache_temperature_summary"]["none"]["view_count"] == 1
 
 
 def test_extract_bundle_for_index_delegates_without_compat_shim(monkeypatch):

@@ -756,17 +756,25 @@ def index_views(views):
         if not is_view(view):
             skipped += 1
             continue
+        view_symbol_perf = accum.create_view_symbol_perf_accumulator()
+
+        def _symbol_lookup_callback(lookup, _view_symbol_perf=view_symbol_perf):
+            accum.accumulate_symbol_raster_lookup(lookup)
+            _view_symbol_perf.accumulate(lookup)
+
         extraction_start = time.perf_counter()
         try:
             bundle, status = _extract_bundle_for_index(
                 view,
-                symbol_raster_lookup_callback=accum.accumulate_symbol_raster_lookup,
+                symbol_raster_lookup_callback=_symbol_lookup_callback,
             )
         except Exception as exc:
             accum.accumulate_error(getattr(getattr(view, "Id", None), "IntegerValue", None), view_label(view), str(exc))
             raise
         extraction_ms = (time.perf_counter() - extraction_start) * 1000.0
         bundle.presentation_summary.debug["extraction_ms"] = extraction_ms
+        view_perf_summary = accum.finalize_view_symbol_perf(view_symbol_perf)
+        accum.accumulate_cache_temperature(view_perf_summary.get("cache_temperature"), extraction_ms)
         accum.accumulate_view_timing(
             bundle.search_features.view_id,
             bundle.presentation_summary.display_name,
@@ -775,7 +783,7 @@ def index_views(views):
         accum.accumulate(bundle, status)
         if status not in ("hit_disk", "hit_memory"):
             _write_doc_scoped_cache_record(cache_root, bundle)
-        accum.flush_view_record(index_jsonl_path, bundle, status)
+        accum.flush_view_record(index_jsonl_path, bundle, status, view_perf=view_perf_summary)
         try:
             preview_path = generate_and_cache_view_preview(
                 view,
