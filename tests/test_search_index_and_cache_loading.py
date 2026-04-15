@@ -373,6 +373,11 @@ def test_index_views_jsonl_includes_per_view_symbol_perf_and_cache_temperature(m
     )
 
     def fake_extract(view, write_legacy_cache_record=True, symbol_raster_lookup_callback=None):
+        bundle = _bundle(view.Id.IntegerValue, cache_status="rebuilt")
+        bundle.presentation_summary.debug["stage_timings_ms"] = {
+            "symbol_raster_ms": float(view.Id.IntegerValue),
+            "token_collection_ms": 2.0,
+        }
         if view.Id.IntegerValue == 1:
             symbol_raster_lookup_callback(
                 {"symbol_type_key": "Door|A", "cache_hit": False, "miss_reason": "file not found", "elapsed_ms": 5.0}
@@ -384,12 +389,16 @@ def test_index_views_jsonl_includes_per_view_symbol_perf_and_cache_temperature(m
             symbol_raster_lookup_callback(
                 {"symbol_type_key": "Tag|B", "cache_hit": False, "miss_reason": "parse error", "elapsed_ms": 3.0}
             )
-        return _bundle(view.Id.IntegerValue, cache_status="rebuilt"), "rebuilt"
+        elif view.Id.IntegerValue == 4:
+            symbol_raster_lookup_callback(
+                {"symbol_type_key": "Door|A", "cache_hit": True, "miss_reason": None, "elapsed_ms": 1.0}
+            )
+        return bundle, "rebuilt"
 
     monkeypatch.setattr(search, "_extract_bundle_with_cache", fake_extract)
     monkeypatch.setattr(search, "generate_and_cache_view_preview", lambda *_args, **_kwargs: "preview.png")
 
-    summary = search.index_views([FakeView(1), FakeView(2), FakeView(3)])
+    summary = search.index_views([FakeView(1), FakeView(2), FakeView(3), FakeView(4)])
     with open(summary["index_jsonl"], "r", encoding="utf-8") as handle:
         rows = [json.loads(line) for line in handle.read().splitlines()]
     by_view = {row["view_id"]: row for row in rows}
@@ -408,13 +417,26 @@ def test_index_views_jsonl_includes_per_view_symbol_perf_and_cache_temperature(m
 
     assert by_view[3]["symbol_lookups_total"] == 0
     assert by_view[3]["cache_temperature"] == "none"
+    assert by_view[3]["stage_timings_ms"]["symbol_raster_ms"] == 3.0
+
+    assert by_view[4]["symbol_lookups_total"] == 1
+    assert by_view[4]["symbol_cache_hits"] == 1
+    assert by_view[4]["symbol_cache_misses"] == 0
+    assert by_view[4]["cache_temperature"] == "warm"
+    assert by_view[4]["internal_stage_total_ms"] >= 0.0
+    assert by_view[4]["internal_stage_coverage_ratio"] >= 0.0
+    assert by_view[4]["extraction_minus_internal_stage_ms"] >= 0.0
 
     with open(summary["index_sidecar"], "r", encoding="utf-8") as handle:
         sidecar = json.load(handle)
-    assert sidecar["symbol_raster_summary"]["lookups_total"] == 3
+    assert sidecar["symbol_raster_summary"]["lookups_total"] == 4
     assert sidecar["cache_temperature_summary"]["cold"]["view_count"] == 1
     assert sidecar["cache_temperature_summary"]["mixed"]["view_count"] == 1
     assert sidecar["cache_temperature_summary"]["none"]["view_count"] == 1
+    assert sidecar["cache_temperature_summary"]["warm"]["view_count"] == 1
+    assert sidecar["stage_timing_summary"]["stages"]["symbol_raster_ms"]["view_count"] == 4
+    assert sidecar["stage_timing_summary"]["stages"]["symbol_raster_ms"]["total_ms"] == 10.0
+    assert sidecar["stage_timing_summary"]["stages"]["token_collection_ms"]["total_ms"] == 8.0
 
 
 def test_extract_bundle_for_index_delegates_without_compat_shim(monkeypatch):

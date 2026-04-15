@@ -261,8 +261,18 @@ def _layout_graph_features(view, elements, element_curves=None):
     }
 
 
+def _elapsed_ms(start_time):
+    return max(0.0, (time.perf_counter() - float(start_time)) * 1000.0)
+
+
 def _build_state_context(view, symbol_raster_lookup_callback=None):
+    stage_timings_ms = {}
+
+    stage_start = time.perf_counter()
     all_elements = get_view_elements(view)
+    stage_timings_ms["element_collection_ms"] = _elapsed_ms(stage_start)
+
+    stage_start = time.perf_counter()
     raster_symbol_points = symbol_raster.collect_raster_points_for_view(
         view=view,
         doc=getattr(view, "Document", None),
@@ -270,22 +280,28 @@ def _build_state_context(view, symbol_raster_lookup_callback=None):
         diagnostic_callback=symbol_raster_lookup_callback,
         elements=all_elements,
     )
+    stage_timings_ms["symbol_raster_ms"] = _elapsed_ms(stage_start)
     total_family_instances = sum(1 for elem in all_elements if is_family_instance(elem))
     covered_instance_ids = {
         int(elem_id) for elem_id, pts in raster_symbol_points.items() if pts
     }
+    stage_start = time.perf_counter()
     element_curves = {}
     for elem in all_elements:
         cache_key = element_curve_cache_key(elem)
         if cache_key is None:
             continue
         element_curves[cache_key] = element_geometry_curves(elem, view=view)
+    stage_timings_ms["curve_precollect_ms"] = _elapsed_ms(stage_start)
     kind = classify_view_kind(view, elements=all_elements)
     source_doc_id, source_doc_name = _doc_provenance(view)
+    stage_start = time.perf_counter()
     raw_tokens, _, _ = collect_token_data_for_view(
         view, kind, include_element_report=False, elements=all_elements
     )
+    stage_timings_ms["token_collection_ms"] = _elapsed_ms(stage_start)
 
+    stage_start = time.perf_counter()
     curves, raster_points = get_2d_curves_in_view(
         view,
         only_model_intersections=(kind == "DETAIL_MODEL"),
@@ -299,6 +315,7 @@ def _build_state_context(view, symbol_raster_lookup_callback=None):
     raster_points = [(float(p[0]), float(p[1])) for p in raster_points]
     raster_points = list(dict.fromkeys(raster_points))
     points_for_scale = pts2 + raster_points
+    stage_timings_ms["curve_extraction_ms"] = _elapsed_ms(stage_start)
 
     scale = robust_scale(points_for_scale, CONFIG["kNN_k"])
     ptsn_curve = [(p[0] / scale, p[1] / scale) for p in pts2] if pts2 else []
@@ -361,6 +378,7 @@ def _build_state_context(view, symbol_raster_lookup_callback=None):
         "center_graph_hash": center_graph_hash,
         "state_payload": state_payload,
         "state_hash": state_hash,
+        "_stage_timings_ms": stage_timings_ms,
     }
 
 
@@ -496,6 +514,7 @@ def collect_token_data_for_view(view, kind, tokens=None, include_element_report=
 
 def extract_feature_bundle(view, state_ctx=None):
     ctx = state_ctx or _build_state_context(view)
+    stage_timings_ms = dict(ctx.get("_stage_timings_ms") or {})
 
     kind = ctx["kind"]
     source_doc_id = ctx["source_doc_id"]
@@ -511,6 +530,7 @@ def extract_feature_bundle(view, state_ctx=None):
     content_bbox_q = ctx["content_bbox_q"]
     center_graph_hash = ctx["center_graph_hash"]
 
+    stage_start = time.perf_counter()
     geom_fp = geom_fingerprint_knn(
         ptsn,
         k=CONFIG["kNN_k"],
@@ -520,7 +540,9 @@ def extract_feature_bundle(view, state_ctx=None):
 
     orientation_hist = _orientation_hist(curves)
     length_hist = _normalized_length_hist(curves, scale)
+    stage_timings_ms["geometry_fingerprint_ms"] = _elapsed_ms(stage_start)
 
+    stage_start = time.perf_counter()
     fine = build_fine_metrics(curves, ptsn)
     covered_instance_ids = set(ctx.get("covered_instance_ids", set()))
     total_family_instances = int(ctx.get("total_family_instances", 0))
@@ -540,6 +562,7 @@ def extract_feature_bundle(view, state_ctx=None):
             "raster_geometry_coverage": float(len(covered_instance_ids)) / float(max(total_family_instances, 1)),
         }
     )
+    stage_timings_ms["fine_metrics_ms"] = _elapsed_ms(stage_start)
 
     state_payload = dict(ctx["state_payload"])
     state_hash = ctx["state_hash"]
@@ -581,6 +604,7 @@ def extract_feature_bundle(view, state_ctx=None):
         symbol_counts={"total": int(sum(symbol_multiset.values())), "unique": len(symbol_multiset)},
         debug={"scale": scale, "pt_count": len(ptsn)},
     )
+    search_features.debug["stage_timings_ms"] = dict(sorted(stage_timings_ms.items()))
 
     token_scores = sorted(
         ((k, v) for k, v in {**tokens_stable, **tokens_context}.items()),
@@ -601,6 +625,7 @@ def extract_feature_bundle(view, state_ctx=None):
             "symbol_instances": int(sum(symbol_multiset.values())),
             "layout_nodes": int(layout.get("node_count", 0.0)),
         },
+        debug={"stage_timings_ms": dict(sorted(stage_timings_ms.items()))},
     )
 
     return ViewFeatureBundle(
@@ -619,6 +644,7 @@ def extract_features(view):
 
 def _extract_bundle_with_cache(view, write_legacy_cache_record=True, symbol_raster_lookup_callback=None):
     state_ctx = _build_state_context(view, symbol_raster_lookup_callback=symbol_raster_lookup_callback)
+    state_stage_timings = dict(state_ctx.get("_stage_timings_ms") or {})
     cache_root = resolve_view_cache_root(CONFIG)
     cached, status = get_cached_bundle_with_diagnostics(
         in_memory_cache=GLOBAL_VIEW_FEATURE_CACHE,
@@ -632,6 +658,10 @@ def _extract_bundle_with_cache(view, write_legacy_cache_record=True, symbol_rast
     )
     if cached is not None:
         cached.presentation_summary.debug["cache_status"] = status
+        if state_stage_timings:
+            cached.presentation_summary.debug["stage_timings_ms"] = dict(sorted(state_stage_timings.items()))
+            if isinstance(getattr(cached, "search_features", None), ViewSearchFeatures):
+                cached.search_features.debug["stage_timings_ms"] = dict(sorted(state_stage_timings.items()))
         return cached, status
 
     fresh_bundle = extract_feature_bundle(view, state_ctx=state_ctx)
@@ -774,7 +804,19 @@ def index_views(views):
             raise
         extraction_ms = (time.perf_counter() - extraction_start) * 1000.0
         bundle.presentation_summary.debug["extraction_ms"] = extraction_ms
+        stage_timings_ms = (
+            bundle.presentation_summary.debug.get("stage_timings_ms")
+            or bundle.search_features.debug.get("stage_timings_ms")
+            or {}
+        )
+        stage_timings_ms, stage_total_ms = accum.accumulate_view_stage_timings(stage_timings_ms)
         view_perf_summary = accum.finalize_view_symbol_perf(view_symbol_perf)
+        view_perf_summary["stage_timings_ms"] = stage_timings_ms
+        view_perf_summary["internal_stage_total_ms"] = stage_total_ms
+        view_perf_summary["internal_stage_coverage_ratio"] = (
+            0.0 if extraction_ms <= 0.0 else float(stage_total_ms) / float(extraction_ms)
+        )
+        view_perf_summary["extraction_minus_internal_stage_ms"] = max(0.0, float(extraction_ms) - float(stage_total_ms))
         accum.accumulate_cache_temperature(view_perf_summary.get("cache_temperature"), extraction_ms)
         accum.accumulate_view_timing(
             bundle.search_features.view_id,

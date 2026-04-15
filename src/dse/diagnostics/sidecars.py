@@ -1,5 +1,6 @@
 import hashlib
 import json
+import math
 import os
 import time
 from datetime import datetime
@@ -50,6 +51,26 @@ def distribution_stats(values):
         "p75": float(percentile(sorted_values, 0.75)),
         "p95": float(percentile(sorted_values, 0.95)),
     }
+
+
+def normalize_stage_timings(stage_timings):
+    normalized = {}
+    if not isinstance(stage_timings, dict):
+        return normalized
+    for stage_name, raw_value in stage_timings.items():
+        if stage_name is None:
+            continue
+        key = str(stage_name).strip()
+        if not key:
+            continue
+        try:
+            value = float(raw_value)
+        except Exception:
+            continue
+        if not math.isfinite(value):
+            continue
+        normalized[key] = max(0.0, value)
+    return dict(sorted(normalized.items()))
 
 
 def write_json_sidecar(path, payload):
@@ -184,6 +205,8 @@ class IndexDiagnosticAccumulator:
         self._view_extraction_ms = []
         self._view_extraction_rows = []
         self._cache_temperature_cohort_ms = {"cold": [], "mixed": [], "warm": [], "none": []}
+        self._stage_timing_by_stage = {}
+        self._internal_stage_total_ms = []
 
     def flush_view_record(self, path, bundle, status, view_perf=None):
         """Append one JSON Lines record for this view to path."""
@@ -208,9 +231,14 @@ class IndexDiagnosticAccumulator:
             ("new_symbol_types_built_in_view", 0),
             ("reused_symbol_types_in_view", 0),
             ("cache_temperature", "none"),
+            ("stage_timings_ms", {}),
+            ("internal_stage_total_ms", 0.0),
+            ("internal_stage_coverage_ratio", 0.0),
+            ("extraction_minus_internal_stage_ms", 0.0),
         ):
             if key not in perf:
                 perf[key] = default
+        perf["stage_timings_ms"] = normalize_stage_timings(perf.get("stage_timings_ms"))
 
         record = {
             "schema_version": INDEX_VIEWS_JSONL_SCHEMA,
@@ -307,6 +335,14 @@ class IndexDiagnosticAccumulator:
             {"view_id": int(view_id), "display_name": str(display_name), "ms": duration}
         )
 
+    def accumulate_view_stage_timings(self, stage_timings):
+        normalized = normalize_stage_timings(stage_timings)
+        internal_total = float(sum(normalized.values()))
+        self._internal_stage_total_ms.append(internal_total)
+        for stage_name, duration_ms in normalized.items():
+            self._stage_timing_by_stage.setdefault(stage_name, []).append(float(duration_ms))
+        return normalized, internal_total
+
     def accumulate_cache_temperature(self, cache_temperature, extraction_ms):
         cohort = str(cache_temperature or "none")
         if cohort not in self._cache_temperature_cohort_ms:
@@ -375,6 +411,26 @@ class IndexDiagnosticAccumulator:
             cache_temperature_summary[cohort] = {
                 "view_count": len(timings),
                 "timing_ms": distribution_stats(timings),
+            }
+        extraction_total_ms = float(sum(self._view_extraction_ms))
+        stage_totals = {
+            stage_name: float(sum(values)) for stage_name, values in self._stage_timing_by_stage.items()
+        }
+        stage_total_sum_ms = float(sum(stage_totals.values()))
+        stage_summary = {}
+        for stage_name in sorted(self._stage_timing_by_stage.keys()):
+            values = self._stage_timing_by_stage[stage_name]
+            total_ms = stage_totals.get(stage_name, 0.0)
+            stage_summary[stage_name] = {
+                "view_count": len(values),
+                "total_ms": total_ms,
+                "timing_ms": {
+                    "mean": distribution_stats(values)["mean"],
+                    "p50": distribution_stats(values)["p50"],
+                    "p95": distribution_stats(values)["p95"],
+                },
+                "fraction_of_stage_total": 0.0 if stage_total_sum_ms <= 0.0 else total_ms / stage_total_sum_ms,
+                "fraction_of_extraction_total": 0.0 if extraction_total_ms <= 0.0 else total_ms / extraction_total_ms,
             }
 
         return {
@@ -461,17 +517,23 @@ class IndexDiagnosticAccumulator:
             },
             "cache_temperature_summary": cache_temperature_summary,
             "timing": {
-                "total_elapsed_ms": float(sum(self._view_extraction_ms)),
+                "total_elapsed_ms": extraction_total_ms,
                 "mean_view_ms": view_stats["mean"],
                 "p50_view_ms": view_stats["p50"],
                 "p95_view_ms": view_stats["p95"],
                 "slowest_views": slowest_views,
+                "internal_stage_total_ms": float(sum(self._internal_stage_total_ms)),
             },
             "timing_summary": {
-                "total_elapsed_ms": float(sum(self._view_extraction_ms)),
+                "total_elapsed_ms": extraction_total_ms,
                 "mean_view_ms": view_stats["mean"],
                 "p50_view_ms": view_stats["p50"],
                 "p95_view_ms": view_stats["p95"],
+            },
+            "stage_timing_summary": {
+                "stages": stage_summary,
+                "internal_stage_total_ms": float(sum(self._internal_stage_total_ms)),
+                "total_extraction_ms": extraction_total_ms,
             },
             "slowest_views": slowest_views,
             "flag_summary": {

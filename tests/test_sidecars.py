@@ -13,6 +13,7 @@ from dse.diagnostics.sidecars import (
     ViewSymbolRasterPerfAccumulator,
     classify_cache_temperature,
     distribution_stats,
+    normalize_stage_timings,
     write_json_sidecar,
 )
 
@@ -108,6 +109,19 @@ def test_distribution_stats_non_empty_and_empty():
     assert empty["p95"] is None
 
 
+def test_normalize_stage_timings_filters_invalid_rows():
+    out = normalize_stage_timings(
+        {
+            " token_collection_ms ": 1.25,
+            "bad": "x",
+            "neg": -3.0,
+            "": 9.0,
+            None: 2.0,
+        }
+    )
+    assert out == {"neg": 0.0, "token_collection_ms": 1.25}
+
+
 def test_index_diagnostic_accumulator_finalize_with_flags_and_stopwords():
     accum = IndexDiagnosticAccumulator()
     accum.accumulate(
@@ -133,7 +147,9 @@ def test_index_diagnostic_accumulator_finalize_with_flags_and_stopwords():
         }
     )
     accum.accumulate_view_timing(1, "Zero", 12.0)
+    accum.accumulate_view_stage_timings({"symbol_raster_ms": 3.0, "token_collection_ms": 2.0})
     accum.accumulate_view_timing(2, "Sparse", 22.0)
+    accum.accumulate_view_stage_timings({"symbol_raster_ms": 4.0, "token_collection_ms": 1.0})
     accum.accumulate(
         _bundle(
             2,
@@ -166,6 +182,9 @@ def test_index_diagnostic_accumulator_finalize_with_flags_and_stopwords():
     assert payload["timing"]["slowest_views"][0]["view_id"] == 2
     assert payload["timing"]["mean_view_ms"] == 17.0
     assert payload["timing_summary"]["mean_view_ms"] == 17.0
+    assert payload["stage_timing_summary"]["stages"]["symbol_raster_ms"]["total_ms"] == 7.0
+    assert payload["stage_timing_summary"]["stages"]["token_collection_ms"]["timing_ms"]["p50"] == 1.5
+    assert payload["stage_timing_summary"]["internal_stage_total_ms"] == 10.0
 
 
 def test_search_diagnostic_builder_builds_schema_and_tiers():
@@ -262,7 +281,17 @@ def test_flush_view_record_creates_jsonl(tmp_path):
     path = tmp_path / "diag" / "index_views.jsonl"
 
     accum.flush_view_record(str(path), _jsonl_bundle(1, name="One"), "rebuilt")
-    accum.flush_view_record(str(path), _jsonl_bundle(2, name="Two"), "hit_disk")
+    accum.flush_view_record(
+        str(path),
+        _jsonl_bundle(2, name="Two"),
+        "hit_disk",
+        view_perf={
+            "stage_timings_ms": {"symbol_raster_ms": 1.0, "token_collection_ms": 2.0},
+            "internal_stage_total_ms": 3.0,
+            "internal_stage_coverage_ratio": 0.5,
+            "extraction_minus_internal_stage_ms": 3.0,
+        },
+    )
 
     with open(path, "r", encoding="utf-8") as handle:
         rows = [json.loads(line) for line in handle.read().splitlines()]
@@ -277,6 +306,10 @@ def test_flush_view_record_creates_jsonl(tmp_path):
     assert rows[1]["view_id"] == 2
     assert rows[1]["cache_status"] == "hit_disk"
     assert rows[1]["ts_utc"].endswith("Z")
+    assert rows[1]["stage_timings_ms"] == {"symbol_raster_ms": 1.0, "token_collection_ms": 2.0}
+    assert rows[1]["internal_stage_total_ms"] == 3.0
+    assert rows[1]["internal_stage_coverage_ratio"] == 0.5
+    assert rows[1]["extraction_minus_internal_stage_ms"] == 3.0
 
 
 def test_flush_view_record_appends_across_calls(tmp_path):
