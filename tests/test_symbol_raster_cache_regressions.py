@@ -28,6 +28,8 @@ def _load_symbol_raster():
 def _clear_symbol_raster_memory_cache():
     symbol_raster = _load_symbol_raster()
     symbol_raster._RUN_MEMORY_SYMBOL_RASTER_CACHE.clear()
+    symbol_raster._RUN_DOCUMENT_LOOKUP_CACHE["drafting_view_family_type_id"].clear()
+    symbol_raster._RUN_DOCUMENT_LOOKUP_CACHE["stats"].clear()
 
 
 def test_repeated_same_key_call_uses_cache_without_fresh_view(monkeypatch):
@@ -556,3 +558,118 @@ def test_collect_canonical_points_uses_memory_after_rebuild(monkeypatch):
     assert out2 == []
     assert calls["fresh_view"] == 1
     assert calls["read"] == 1
+
+
+def test_get_drafting_view_family_type_id_caches_per_document(monkeypatch):
+    symbol_raster = _load_symbol_raster()
+
+    class _ViewFamilyType(object):
+        def __init__(self, name, identifier):
+            self.ViewFamily = name
+            self.Id = identifier
+
+    class _Collector(object):
+        def __init__(self, _doc):
+            calls["collector"] += 1
+
+        def WherePasses(self, _flt):
+            return iter([_ViewFamilyType("FloorPlan", 10), _ViewFamilyType("Drafting", 20)])
+
+    class _Doc(object):
+        def GetHashCode(self):
+            return 123
+
+        PathName = "doc_a.rvt"
+
+        def GetElement(self, element_id):
+            return type("Elem", (), {"Id": element_id})() if element_id == 20 else None
+
+    calls = {"collector": 0}
+    fake_db = sys.modules["Autodesk.Revit.DB"]
+    monkeypatch.setattr(fake_db, "FilteredElementCollector", _Collector, raising=False)
+    monkeypatch.setattr(fake_db, "ElementClassFilter", lambda _cls: object(), raising=False)
+    monkeypatch.setattr(fake_db, "ViewFamilyType", type("ViewFamilyType", (), {}), raising=False)
+    monkeypatch.setattr(fake_db, "ViewFamily", type("ViewFamily", (), {"Drafting": "Drafting"}), raising=False)
+
+    doc = _Doc()
+    first = symbol_raster._get_drafting_view_family_type_id(doc)
+    second = symbol_raster._get_drafting_view_family_type_id(doc)
+    stats = symbol_raster._document_lookup_debug_snapshot()
+
+    assert first == 20
+    assert second == 20
+    assert calls["collector"] == 1
+    assert stats["drafting_lookup_misses"] == 1
+    assert stats["drafting_lookup_hits"] == 1
+
+
+def test_create_fresh_view_with_symbol_uses_single_transaction_scope(monkeypatch):
+    symbol_raster = _load_symbol_raster()
+
+    class _XYZ(object):
+        def __init__(self, x=0.0, y=0.0, z=0.0):
+            self.X = x
+            self.Y = y
+            self.Z = z
+
+    class _BoundingBoxXYZ(object):
+        def __init__(self):
+            self.Min = None
+            self.Max = None
+
+    class _ViewDrafting(object):
+        @staticmethod
+        def Create(_doc, _vft_id):
+            return type("TmpView", (), {"Id": type("ID", (), {"IntegerValue": 7})(), "Scale": 100})()
+
+    class _TempInst(object):
+        def get_BoundingBox(self, _view):
+            return type(
+                "BB",
+                (),
+                {"Min": _XYZ(0.0, 0.0, 0.0), "Max": _XYZ(1.0, 2.0, 0.0)},
+            )()
+
+    class _Create(object):
+        def NewFamilyInstance(self, _point, _symbol, _view):
+            return _TempInst()
+
+    class _Doc(object):
+        Create = _Create()
+
+        def Regenerate(self):
+            return None
+
+    class _Symbol(object):
+        IsActive = True
+
+    class _Elem(object):
+        Symbol = _Symbol()
+
+    class _Scope(object):
+        def __enter__(self):
+            calls["enter"] += 1
+            return self
+
+        def __exit__(self, *_args):
+            calls["exit"] += 1
+            return False
+
+    calls = {"enter": 0, "exit": 0}
+    fake_db = sys.modules["Autodesk.Revit.DB"]
+    monkeypatch.setattr(fake_db, "XYZ", _XYZ, raising=False)
+    monkeypatch.setattr(fake_db, "BoundingBoxXYZ", _BoundingBoxXYZ, raising=False)
+    monkeypatch.setattr(fake_db, "ViewDrafting", _ViewDrafting, raising=False)
+    monkeypatch.setattr(symbol_raster, "_get_drafting_view_family_type_id", lambda _doc: 1)
+    monkeypatch.setattr(symbol_raster, "scoped_transaction", lambda *_args, **_kwargs: _Scope())
+
+    tmp_view, bounds = symbol_raster._create_fresh_view_with_symbol(
+        _Doc(),
+        type("View", (), {"Scale": 96})(),
+        _Elem(),
+        include_canonical_bounds=True,
+    )
+
+    assert tmp_view is not None
+    assert bounds == {"min_x": 0.0, "max_x": 1.0, "min_y": 0.0, "max_y": 2.0}
+    assert calls == {"enter": 1, "exit": 1}
