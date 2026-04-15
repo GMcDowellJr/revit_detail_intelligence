@@ -18,6 +18,10 @@ from dse.revit_api.geometry_2d import to_view_local_2d
 _SYMBOL_RASTER_PIPELINE_VERSION = "symbol_raster.pipeline.v3"
 _CANONICAL_LINE_LENGTH_FT = 1.0  # 12 inches
 _RUN_MEMORY_SYMBOL_RASTER_CACHE = {}
+_RUN_DOCUMENT_LOOKUP_CACHE = {
+    "drafting_view_family_type_id": {},
+    "stats": {"drafting_lookup_hits": 0, "drafting_lookup_misses": 0},
+}
 
 
 def _emit_lookup_diagnostic(callback, payload):
@@ -136,6 +140,25 @@ def _document_identity(doc):
         return "doc_hash:{}".format(int(doc.GetHashCode()))
     except Exception:
         return "<no-doc>"
+
+
+def _document_cache_key(doc):
+    doc_identity = _document_identity(doc)
+    try:
+        doc_hash = int(doc.GetHashCode())
+    except Exception:
+        doc_hash = None
+    return "{}|{}".format(doc_identity, doc_hash)
+
+
+def _increment_doc_lookup_stat(name):
+    stats = _RUN_DOCUMENT_LOOKUP_CACHE.setdefault("stats", {})
+    stats[name] = int(stats.get(name, 0)) + 1
+
+
+def _document_lookup_debug_snapshot():
+    stats = _RUN_DOCUMENT_LOOKUP_CACHE.get("stats", {})
+    return {str(k): int(v) for k, v in dict(stats).items()}
 
 
 def _symbol_cache_key(element, view, obb_width=0.0, obb_height=0.0):
@@ -966,9 +989,23 @@ def _get_drafting_view_family_type_id(doc):
         ViewFamilyType,
     )
 
+    cache_bucket = _RUN_DOCUMENT_LOOKUP_CACHE.setdefault("drafting_view_family_type_id", {})
+    doc_key = _document_cache_key(doc)
+    cached_id = cache_bucket.get(doc_key)
+    if cached_id is not None:
+        try:
+            if doc.GetElement(cached_id) is not None:
+                _increment_doc_lookup_stat("drafting_lookup_hits")
+                return cached_id
+        except Exception:
+            pass
+        cache_bucket.pop(doc_key, None)
+
+    _increment_doc_lookup_stat("drafting_lookup_misses")
     collector = FilteredElementCollector(doc).WherePasses(ElementClassFilter(ViewFamilyType))
     for view_family_type in collector:
         if getattr(view_family_type, "ViewFamily", None) == ViewFamily.Drafting:
+            cache_bucket[doc_key] = view_family_type.Id
             return view_family_type.Id
     return None
 
@@ -1042,49 +1079,44 @@ def _create_fresh_view_with_symbol(
                     },
                 )
             doc.Regenerate()
-
-        bb = tmp_inst.get_BoundingBox(tmp_view)
-        canonical_bounds = None
-        if bb is not None:
-            canonical_bounds = {
-                "min_x": float(bb.Min.X),
-                "max_x": float(bb.Max.X),
-                "min_y": float(bb.Min.Y),
-                "max_y": float(bb.Max.Y),
-            }
-        else:
-            # Fallback for rare API cases: use deterministic canonical defaults so cache output
-            # remains type-stable even when temporary instance bounds are unavailable.
-            if _is_line_based_family_instance(element):
+            bb = tmp_inst.get_BoundingBox(tmp_view)
+            canonical_bounds = None
+            if bb is not None:
                 canonical_bounds = {
-                    "min_x": 0.0,
-                    "max_x": float(_CANONICAL_LINE_LENGTH_FT),
-                    "min_y": -0.05 * float(_CANONICAL_LINE_LENGTH_FT),
-                    "max_y": 0.05 * float(_CANONICAL_LINE_LENGTH_FT),
+                    "min_x": float(bb.Min.X),
+                    "max_x": float(bb.Max.X),
+                    "min_y": float(bb.Min.Y),
+                    "max_y": float(bb.Max.Y),
                 }
+                width = float(bb.Max.X - bb.Min.X)
+                height = float(bb.Max.Y - bb.Min.Y)
+                pad = max(width, height) * 0.25
+                pad = max(pad, 0.1)
+                expanded_bbox = BoundingBoxXYZ()
+                expanded_bbox.Min = XYZ(bb.Min.X - pad, bb.Min.Y - pad, bb.Min.Z)
+                expanded_bbox.Max = XYZ(bb.Max.X + pad, bb.Max.Y + pad, bb.Max.Z)
+                tmp_view.CropBoxActive = True
+                tmp_view.CropBoxVisible = False
+                tmp_view.CropBox = expanded_bbox
             else:
-                half_w = max(float(obb_width) * 0.5, 1.0 / 12.0)
-                half_h = max(float(obb_height) * 0.5, 1.0 / 12.0)
-                canonical_bounds = {
-                    "min_x": -half_w,
-                    "max_x": half_w,
-                    "min_y": -half_h,
-                    "max_y": half_h,
-                }
-        if bb is None:
-            return (tmp_view, canonical_bounds) if include_canonical_bounds else tmp_view
-
-        with scoped_transaction(doc, "DSE: set crop for symbol raster"):
-            width = float(bb.Max.X - bb.Min.X)
-            height = float(bb.Max.Y - bb.Min.Y)
-            pad = max(width, height) * 0.25
-            pad = max(pad, 0.1)
-            expanded_bbox = BoundingBoxXYZ()
-            expanded_bbox.Min = XYZ(bb.Min.X - pad, bb.Min.Y - pad, bb.Min.Z)
-            expanded_bbox.Max = XYZ(bb.Max.X + pad, bb.Max.Y + pad, bb.Max.Z)
-            tmp_view.CropBoxActive = True
-            tmp_view.CropBoxVisible = False
-            tmp_view.CropBox = expanded_bbox
+                # Fallback for rare API cases: use deterministic canonical defaults so cache output
+                # remains type-stable even when temporary instance bounds are unavailable.
+                if _is_line_based_family_instance(element):
+                    canonical_bounds = {
+                        "min_x": 0.0,
+                        "max_x": float(_CANONICAL_LINE_LENGTH_FT),
+                        "min_y": -0.05 * float(_CANONICAL_LINE_LENGTH_FT),
+                        "max_y": 0.05 * float(_CANONICAL_LINE_LENGTH_FT),
+                    }
+                else:
+                    half_w = max(float(obb_width) * 0.5, 1.0 / 12.0)
+                    half_h = max(float(obb_height) * 0.5, 1.0 / 12.0)
+                    canonical_bounds = {
+                        "min_x": -half_w,
+                        "max_x": half_w,
+                        "min_y": -half_h,
+                        "max_y": half_h,
+                    }
             doc.Regenerate()
 
         return (tmp_view, canonical_bounds) if include_canonical_bounds else tmp_view
