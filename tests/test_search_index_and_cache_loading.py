@@ -303,6 +303,58 @@ def test_index_views_counts_preview_failures_when_generate_returns_none(monkeypa
     assert summary["preview_failures"] == 2
 
 
+def test_build_state_context_passes_collected_elements_to_symbol_raster(monkeypatch):
+    class FakeId(object):
+        IntegerValue = 77
+
+    class FakeView(object):
+        Id = FakeId()
+        DetailLevel = "2"
+        DisplayStyle = "Wireframe"
+        Scale = 100
+        Document = type("Doc", (), {"PathName": "doc.rvt", "Title": "doc"})()
+
+    class FakeCurve(object):
+        Length = 1.0
+
+    element = object()
+    all_elements = [element]
+    captured = {}
+
+    monkeypatch.setattr(search, "get_view_elements", lambda _view: all_elements)
+
+    def _collect_points_for_view(**kwargs):
+        captured["elements"] = kwargs["elements"]
+        return {123: [[0.0, 0.0]]}
+
+    monkeypatch.setattr(search.symbol_raster, "collect_raster_points_for_view", _collect_points_for_view)
+    monkeypatch.setattr(search, "is_family_instance", lambda _elem: True)
+    monkeypatch.setattr(search, "element_curve_cache_key", lambda _elem: "k1")
+    monkeypatch.setattr(search, "element_geometry_curves", lambda _elem, view=None: [FakeCurve()])
+    monkeypatch.setattr(search, "classify_view_kind", lambda _view, elements=None: "DRAFTING")
+    monkeypatch.setattr(search, "collect_token_data_for_view", lambda *args, **kwargs: ({}, [], {}))
+    monkeypatch.setattr(
+        search,
+        "get_2d_curves_in_view",
+        lambda *_args, **_kwargs: ([FakeCurve()], [(1.0, 2.0)]),
+    )
+    monkeypatch.setattr(search, "endpoints_from_curves", lambda _curves: [])
+    monkeypatch.setattr(search, "dedupe_points_by_grid", lambda pts, _tol: pts)
+    monkeypatch.setattr(search, "to_view_local_2d", lambda pts, _view: pts)
+    monkeypatch.setattr(search, "robust_scale", lambda _pts, _k: 1.0)
+    monkeypatch.setattr(search, "_split_tokens", lambda _raw: ({}, {}, {}, {}))
+    monkeypatch.setattr(
+        search,
+        "_layout_graph_features",
+        lambda _view, _elements, element_curves=None: {"center_graph_hash": "layout"},
+    )
+
+    out = search._build_state_context(FakeView())
+
+    assert captured["elements"] is all_elements
+    assert out["all_elements"] is all_elements
+
+
 def test_index_views_jsonl_includes_per_view_symbol_perf_and_cache_temperature(monkeypatch, tmp_path):
     class FakeId(object):
         def __init__(self, value):

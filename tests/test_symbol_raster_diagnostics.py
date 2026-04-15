@@ -61,6 +61,33 @@ def test_collect_raster_points_accepts_diagnostic_callback(monkeypatch):
     assert calls == []
 
 
+def test_collect_raster_points_uses_caller_supplied_elements(monkeypatch):
+    symbol_raster = _load_symbol_raster()
+
+    class _View(object):
+        Document = object()
+
+    class _Elem(object):
+        pass
+
+    source_elements = [_Elem()]
+
+    def _boom(_view):
+        raise AssertionError("get_view_elements should not run when elements are supplied")
+
+    monkeypatch.setattr(symbol_raster, "get_view_elements", _boom)
+    monkeypatch.setattr(symbol_raster, "is_family_instance", lambda _elem: True)
+    monkeypatch.setattr(
+        symbol_raster,
+        "_collect_points_for_element",
+        lambda *_args, **_kwargs: (9, [[2.0, 3.0]]),
+    )
+
+    out = symbol_raster.collect_raster_points_for_view(_View(), elements=source_elements)
+
+    assert out == {9: [[2.0, 3.0]]}
+
+
 def test_collect_points_emits_cache_lookup_summary(monkeypatch):
     symbol_raster = _load_symbol_raster()
     events = []

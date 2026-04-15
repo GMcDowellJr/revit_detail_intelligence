@@ -268,6 +268,7 @@ def _build_state_context(view, symbol_raster_lookup_callback=None):
         doc=getattr(view, "Document", None),
         config=CONFIG,
         diagnostic_callback=symbol_raster_lookup_callback,
+        elements=all_elements,
     )
     total_family_instances = sum(1 for elem in all_elements if is_family_instance(elem))
     covered_instance_ids = {
