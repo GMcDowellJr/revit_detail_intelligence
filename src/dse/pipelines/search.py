@@ -747,7 +747,8 @@ def index_views(views):
     preview_failures = 0
     accum = IndexDiagnosticAccumulator()
     index_sidecar_path = resolve_index_sidecar_path(CONFIG)
-    index_jsonl_path = index_sidecar_path.replace(".json", "_views.jsonl")
+    index_jsonl_stem, _ = os.path.splitext(index_sidecar_path)
+    index_jsonl_path = "{}_views.jsonl".format(index_jsonl_stem)
     os.makedirs(os.path.dirname(index_jsonl_path), exist_ok=True)
     with open(index_jsonl_path, "w", encoding="utf-8"):
         pass

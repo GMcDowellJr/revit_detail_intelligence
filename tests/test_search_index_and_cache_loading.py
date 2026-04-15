@@ -187,13 +187,17 @@ def test_index_jsonl_truncated_at_start_of_run(monkeypatch, tmp_path):
         def __init__(self, value):
             self.Id = FakeId(value)
 
-    stale_jsonl = tmp_path / "cache" / "index_diagnostic_views.jsonl"
+    stale_jsonl = tmp_path / "run.json" / "cache" / "index_diagnostic_views.jsonl"
     os.makedirs(stale_jsonl.parent, exist_ok=True)
     with open(stale_jsonl, "w", encoding="utf-8") as handle:
         handle.write('{"stale": true}\n')
 
-    monkeypatch.setattr(search, "resolve_view_cache_root", lambda _cfg: str(tmp_path / "cache"))
-    monkeypatch.setattr(search, "resolve_index_sidecar_path", lambda _cfg: str(tmp_path / "cache" / "index_diagnostic.json"))
+    monkeypatch.setattr(search, "resolve_view_cache_root", lambda _cfg: str(tmp_path / "run.json" / "cache"))
+    monkeypatch.setattr(
+        search,
+        "resolve_index_sidecar_path",
+        lambda _cfg: str(tmp_path / "run.json" / "cache" / "index_diagnostic.json"),
+    )
     monkeypatch.setattr(search, "is_view", lambda value: hasattr(value, "Id"))
     monkeypatch.setattr(
         search,
@@ -207,6 +211,7 @@ def test_index_jsonl_truncated_at_start_of_run(monkeypatch, tmp_path):
 
     summary = search.index_views([FakeView(21)])
 
+    assert summary["index_jsonl"] == str(stale_jsonl)
     with open(summary["index_jsonl"], "r", encoding="utf-8") as handle:
         rows = handle.read().splitlines()
 
