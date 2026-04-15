@@ -747,6 +747,7 @@ def index_views(views):
     preview_failures = 0
     accum = IndexDiagnosticAccumulator()
     index_sidecar_path = resolve_index_sidecar_path(CONFIG)
+    index_jsonl_path = index_sidecar_path.replace(".json", "_views.jsonl")
     for view in views:
         if not is_view(view):
             skipped += 1
@@ -768,7 +769,9 @@ def index_views(views):
             extraction_ms,
         )
         accum.accumulate(bundle, status)
-        _write_doc_scoped_cache_record(cache_root, bundle)
+        if status not in ("hit_disk", "hit_memory"):
+            _write_doc_scoped_cache_record(cache_root, bundle)
+        accum.flush_view_record(index_jsonl_path, bundle, status)
         try:
             preview_path = generate_and_cache_view_preview(
                 view,
@@ -798,6 +801,7 @@ def index_views(views):
         "cache_statuses": statuses,
         "preview_failures": preview_failures,
         "index_sidecar": index_sidecar_path,
+        "index_jsonl": index_jsonl_path,
     }
 def find_similar_views(query_view, top_n=5):
     run_id = run_stamp("run")

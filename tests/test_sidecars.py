@@ -230,3 +230,75 @@ def test_extract_bundle_with_cache_returns_tuple(monkeypatch):
     returned_bundle, status = result
     assert returned_bundle.search_features.view_id == 42
     assert status == "hit_memory"
+
+
+def _jsonl_bundle(
+    view_id,
+    *,
+    extraction_ms=1.5,
+    pt_count=7,
+    symbol_instances=3,
+    curve_count=9,
+    name=None,
+):
+    bundle = _bundle(view_id, name=name or "V{}".format(view_id))
+    bundle.presentation_summary.debug = {"extraction_ms": extraction_ms}
+    bundle.search_features.debug = {"pt_count": pt_count}
+    bundle.presentation_summary.feature_summary = {
+        "symbol_instances": symbol_instances,
+        "curve_count": curve_count,
+    }
+    return bundle
+
+
+def test_flush_view_record_creates_jsonl(tmp_path):
+    accum = IndexDiagnosticAccumulator()
+    path = tmp_path / "diag" / "index_views.jsonl"
+
+    accum.flush_view_record(str(path), _jsonl_bundle(1, name="One"), "rebuilt")
+    accum.flush_view_record(str(path), _jsonl_bundle(2, name="Two"), "hit_disk")
+
+    with open(path, "r", encoding="utf-8") as handle:
+        rows = [json.loads(line) for line in handle.read().splitlines()]
+
+    assert len(rows) == 2
+    assert rows[0]["view_id"] == 1
+    assert rows[0]["cache_status"] == "rebuilt"
+    assert rows[0]["ts_utc"].endswith("Z")
+    assert rows[1]["view_id"] == 2
+    assert rows[1]["cache_status"] == "hit_disk"
+    assert rows[1]["ts_utc"].endswith("Z")
+
+
+def test_flush_view_record_appends_across_calls(tmp_path):
+    accum = IndexDiagnosticAccumulator()
+    path = tmp_path / "diag" / "index_views.jsonl"
+
+    accum.flush_view_record(str(path), _jsonl_bundle(10), "rebuilt")
+    accum.flush_view_record(str(path), _jsonl_bundle(11), "hit_memory")
+    accum.flush_view_record(str(path), _jsonl_bundle(12), "hit_disk")
+
+    with open(path, "r", encoding="utf-8") as handle:
+        assert len(handle.read().splitlines()) == 3
+
+
+def test_flush_view_record_survives_missing_optional_fields(tmp_path):
+    accum = IndexDiagnosticAccumulator()
+    path = tmp_path / "diag" / "index_views.jsonl"
+
+    bundle = _bundle(99, name="No Optional")
+    bundle.presentation_summary.debug = {}
+    bundle.search_features.debug = {}
+    bundle.presentation_summary.feature_summary = {}
+
+    accum.flush_view_record(str(path), bundle, "rebuilt")
+
+    with open(path, "r", encoding="utf-8") as handle:
+        row = json.loads(handle.read().splitlines()[0])
+
+    assert row["view_id"] == 99
+    assert row["cache_status"] == "rebuilt"
+    assert row["extraction_ms"] is None
+    assert row["pt_count"] is None
+    assert row["symbol_instances"] is None
+    assert row["curve_count"] is None

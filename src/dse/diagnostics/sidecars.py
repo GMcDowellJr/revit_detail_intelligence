@@ -98,6 +98,30 @@ class IndexDiagnosticAccumulator:
         self._view_extraction_ms = []
         self._view_extraction_rows = []
 
+    def flush_view_record(self, path, bundle, status):
+        """Append one JSON Lines record for this view to path."""
+
+        presentation = getattr(bundle, "presentation_summary", None)
+        search = getattr(bundle, "search_features", None)
+        presentation_debug = getattr(presentation, "debug", None) or {}
+        search_debug = getattr(search, "debug", None) or {}
+        feature_summary = getattr(presentation, "feature_summary", None) or {}
+
+        record = {
+            "view_id": int(getattr(search, "view_id", -1)),
+            "display_name": getattr(presentation, "display_name", ""),
+            "cache_status": str(status),
+            "extraction_ms": presentation_debug.get("extraction_ms"),
+            "pt_count": search_debug.get("pt_count"),
+            "symbol_instances": feature_summary.get("symbol_instances"),
+            "curve_count": feature_summary.get("curve_count"),
+            "ts_utc": datetime.utcnow().isoformat() + "Z",
+        }
+
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record) + "\n")
+
     def accumulate(self, bundle, cache_status):
         self.count_total += 1
         self.count_indexed += 1
