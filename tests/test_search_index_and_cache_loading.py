@@ -176,6 +176,42 @@ def test_sidecar_written_on_rebuilt(monkeypatch):
     assert calls[0][1] == 2
 
 
+
+
+def test_index_jsonl_truncated_at_start_of_run(monkeypatch, tmp_path):
+    class FakeId(object):
+        def __init__(self, value):
+            self.IntegerValue = value
+
+    class FakeView(object):
+        def __init__(self, value):
+            self.Id = FakeId(value)
+
+    stale_jsonl = tmp_path / "cache" / "index_diagnostic_views.jsonl"
+    os.makedirs(stale_jsonl.parent, exist_ok=True)
+    with open(stale_jsonl, "w", encoding="utf-8") as handle:
+        handle.write('{"stale": true}\n')
+
+    monkeypatch.setattr(search, "resolve_view_cache_root", lambda _cfg: str(tmp_path / "cache"))
+    monkeypatch.setattr(search, "resolve_index_sidecar_path", lambda _cfg: str(tmp_path / "cache" / "index_diagnostic.json"))
+    monkeypatch.setattr(search, "is_view", lambda value: hasattr(value, "Id"))
+    monkeypatch.setattr(
+        search,
+        "_extract_bundle_with_cache",
+        lambda view, write_legacy_cache_record=True, symbol_raster_lookup_callback=None: (
+            _bundle(view.Id.IntegerValue, cache_status="rebuilt"),
+            "rebuilt",
+        ),
+    )
+    monkeypatch.setattr(search, "generate_and_cache_view_preview", lambda *_args, **_kwargs: "preview.png")
+
+    summary = search.index_views([FakeView(21)])
+
+    with open(summary["index_jsonl"], "r", encoding="utf-8") as handle:
+        rows = handle.read().splitlines()
+
+    assert len(rows) == 1
+    assert "stale" not in rows[0]
 def test_index_views_writes_doc_scoped_cache_files(monkeypatch, tmp_path):
     class FakeId(object):
         def __init__(self, value):

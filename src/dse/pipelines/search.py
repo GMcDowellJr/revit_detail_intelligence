@@ -748,6 +748,9 @@ def index_views(views):
     accum = IndexDiagnosticAccumulator()
     index_sidecar_path = resolve_index_sidecar_path(CONFIG)
     index_jsonl_path = index_sidecar_path.replace(".json", "_views.jsonl")
+    os.makedirs(os.path.dirname(index_jsonl_path), exist_ok=True)
+    with open(index_jsonl_path, "w", encoding="utf-8"):
+        pass
     for view in views:
         if not is_view(view):
             skipped += 1
