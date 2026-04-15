@@ -434,6 +434,278 @@ def _actual_instance_length_ft(element, obb_width=0.0, obb_height=0.0):
     return max(float(obb_width), float(obb_height), 1e-9)
 
 
+def _build_symbol_instance_context(view, element):
+    elem_id = _safe_int_element_id(element)
+    family_name, _ = _safe_type_sig_parts(element)
+    try:
+        transform = element.GetTotalTransform()
+        bbox = element.get_BoundingBox(view)
+    except Exception as exc:
+        warnings.warn(
+            "DSE: symbol raster OBB failure for element {} ({}) : {}".format(elem_id, family_name, exc),
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return None
+
+    if transform is None or bbox is None:
+        return None
+
+    placement_point, axis_x, is_mirrored, rotation_deg = _instance_pose_in_view_2d(transform, view)
+    obb_width = abs(float(bbox.Max.X - bbox.Min.X))
+    obb_height = abs(float(bbox.Max.Y - bbox.Min.Y))
+    try:
+        (
+            cache_key,
+            family_name,
+            type_name,
+            view_scale,
+            detail_level,
+            is_line_based,
+            doc_scope,
+            type_id_int,
+        ) = _symbol_cache_key(element, view, obb_width=obb_width, obb_height=obb_height)
+    except Exception as exc:
+        warnings.warn(
+            "DSE: symbol raster key failure for element {} ({}) : {}".format(elem_id, family_name, exc),
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return None
+
+    actual_length_ft = _actual_instance_length_ft(element, obb_width=obb_width, obb_height=obb_height)
+    length_scale_x = (actual_length_ft / _CANONICAL_LINE_LENGTH_FT) if is_line_based else 1.0
+    return {
+        "elem_id": elem_id,
+        "family_name": family_name,
+        "type_name": type_name,
+        "cache_key": cache_key,
+        "view_scale": view_scale,
+        "detail_level": detail_level,
+        "is_line_based": is_line_based,
+        "doc_scope": doc_scope,
+        "type_id_int": type_id_int,
+        "obb_width": obb_width,
+        "obb_height": obb_height,
+        "placement_point": placement_point,
+        "axis_x": axis_x,
+        "is_mirrored": is_mirrored,
+        "rotation_deg": rotation_deg,
+        "length_scale_x": length_scale_x,
+    }
+
+
+def _collect_canonical_points_for_context(
+    view,
+    doc,
+    element,
+    context,
+    config,
+    diagnostic_callback=None,
+):
+    lookup_start = time.perf_counter()
+    cache_key = context["cache_key"]
+    family_name = context["family_name"]
+    type_name = context["type_name"]
+    view_scale = context["view_scale"]
+    detail_level = context["detail_level"]
+    is_line_based = context["is_line_based"]
+    doc_scope = context["doc_scope"]
+    obb_width = context["obb_width"]
+    obb_height = context["obb_height"]
+    symbol_type_key = "{}|{}".format(family_name, type_name)
+    cache_path = _cache_file_path(config, family_name, cache_key)
+    cached, miss_reason = _read_cache_entry(cache_path)
+    expected_entry = {
+        "cache_key": cache_key,
+        "doc_scope": doc_scope,
+        "family_name": family_name,
+        "view_scale": view_scale,
+        "detail_level": detail_level,
+        "is_line_based": is_line_based,
+    }
+    if miss_reason is None:
+        cached_points, miss_reason = _validate_cache_entry(cached, expected_entry)
+        if miss_reason is None:
+            _emit_lookup_diagnostic(
+                diagnostic_callback,
+                {
+                    "symbol_type_key": symbol_type_key,
+                    "cache_hit": True,
+                    "miss_reason": None,
+                    "elapsed_ms": (time.perf_counter() - lookup_start) * 1000.0,
+                },
+            )
+            return cached_points
+
+    miss_reason = str(miss_reason or "unknown")
+    if obb_width <= 0.0 or obb_height <= 0.0:
+        entry = {
+            "cache_schema": "symbol_raster.v1",
+            "cache_key": cache_key,
+            "family_name": family_name,
+            "view_scale": view_scale,
+            "detail_level": detail_level,
+            "is_line_based": is_line_based,
+            "doc_scope": doc_scope,
+            "obb_width": obb_width,
+            "obb_height": obb_height,
+            "points": [],
+            "pipeline_version": _SYMBOL_RASTER_PIPELINE_VERSION,
+            "build_time_utc": datetime.now(timezone.utc).isoformat(),
+        }
+        _write_cache_entry(cache_path, entry)
+        _emit_lookup_diagnostic(
+            diagnostic_callback,
+            {
+                "symbol_type_key": symbol_type_key,
+                "cache_hit": False,
+                "miss_reason": miss_reason,
+                "elapsed_ms": (time.perf_counter() - lookup_start) * 1000.0,
+            },
+        )
+        return []
+
+    tmp_view = None
+    canonical_bounds = None
+    png_path = None
+    retained_png_path = None
+    export_tmp_dir = None
+    try:
+        tmp_view_result = _create_fresh_view_with_symbol(
+            doc,
+            view,
+            element,
+            obb_width=obb_width,
+            obb_height=obb_height,
+            include_canonical_bounds=True,
+        )
+        if isinstance(tmp_view_result, tuple):
+            tmp_view, canonical_bounds = tmp_view_result
+        else:
+            # Backward compatibility for test stubs that still return only a view-like object.
+            tmp_view = tmp_view_result
+        if tmp_view is None:
+            raise RuntimeError("failed to duplicate/isolate temporary view")
+        dpi = int(config.get("symbol_raster_dpi", 150))
+        png_path, export_tmp_dir = _export_temp_view_png(doc, tmp_view, dpi)
+        if png_path and os.path.exists(png_path):
+            retained_png_path = _retained_png_path(config, family_name, cache_key)
+            with open(png_path, "rb") as src:
+                blob = src.read()
+            with open(retained_png_path, "wb") as dst:
+                dst.write(blob)
+            png_path = retained_png_path
+    except Exception as exc:
+        _emit_lookup_diagnostic(
+            diagnostic_callback,
+            {
+                "symbol_type_key": symbol_type_key,
+                "cache_hit": False,
+                "miss_reason": "rebuild_export_failure: {}".format(exc),
+                "elapsed_ms": (time.perf_counter() - lookup_start) * 1000.0,
+            },
+        )
+        warnings.warn(
+            "DSE: symbol raster export failure for element {} ({}) : {}".format(
+                context.get("elem_id"), family_name, exc
+            ),
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        _cleanup_export_tmp_dir(export_tmp_dir)
+        return None
+    finally:
+        _delete_temp_view(doc, tmp_view)
+
+    try:
+        if not canonical_bounds:
+            if is_line_based:
+                canonical_bounds = {
+                    "min_x": 0.0,
+                    "max_x": float(_CANONICAL_LINE_LENGTH_FT),
+                    "min_y": -0.05 * float(_CANONICAL_LINE_LENGTH_FT),
+                    "max_y": 0.05 * float(_CANONICAL_LINE_LENGTH_FT),
+                }
+            else:
+                half_w = max(float(obb_width) * 0.5, 1.0 / 12.0)
+                half_h = max(float(obb_height) * 0.5, 1.0 / 12.0)
+                canonical_bounds = {
+                    "min_x": -half_w,
+                    "max_x": half_w,
+                    "min_y": -half_h,
+                    "max_y": half_h,
+                }
+        canonical_width = max(float(canonical_bounds["max_x"]) - float(canonical_bounds["min_x"]), 1e-9)
+        canonical_height = max(float(canonical_bounds["max_y"]) - float(canonical_bounds["min_y"]), 1e-9)
+        pad = max(canonical_width, canonical_height) * 0.25
+        pad = max(pad, 0.1)
+        raster_min_x = float(canonical_bounds["min_x"]) - pad
+        raster_max_x = float(canonical_bounds["max_x"]) + pad
+        raster_min_y = float(canonical_bounds["min_y"]) - pad
+        raster_max_y = float(canonical_bounds["max_y"]) + pad
+        raster_world_width = raster_max_x - raster_min_x
+        raster_world_height = raster_max_y - raster_min_y
+
+        points_xy_rel = []
+        if png_path and os.path.exists(png_path):
+            try:
+                img_width, img_height, lum = _png_to_luminance(png_path)
+                edges = _edge_pixels(img_width, img_height, lum)
+                for col, row in edges:
+                    x_rel = raster_min_x + (float(col) / float(max(1, img_width))) * raster_world_width
+                    y_rel = raster_min_y + (1.0 - (float(row) / float(max(1, img_height)))) * raster_world_height
+                    points_xy_rel.append([x_rel, y_rel])
+            except Exception as exc:
+                _emit_lookup_diagnostic(
+                    diagnostic_callback,
+                    {
+                        "symbol_type_key": symbol_type_key,
+                        "cache_hit": False,
+                        "miss_reason": "rebuild_decode_failure: {}".format(exc),
+                        "elapsed_ms": (time.perf_counter() - lookup_start) * 1000.0,
+                    },
+                )
+                warnings.warn(
+                    "DSE: symbol raster decode failure for element {} ({}) : {}".format(
+                        context.get("elem_id"), family_name, exc
+                    ),
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+                return None
+
+        points_xy_rel = _subsample_points(points_xy_rel, int(config.get("symbol_raster_max_points", 200)))
+        entry = {
+            "cache_schema": "symbol_raster.v1",
+            "cache_key": cache_key,
+            "family_name": family_name,
+            "view_scale": view_scale,
+            "detail_level": detail_level,
+            "is_line_based": is_line_based,
+            "doc_scope": doc_scope,
+            "obb_width": obb_width,
+            "obb_height": obb_height,
+            "canonical_bounds": canonical_bounds,
+            "points": points_xy_rel,
+            "pipeline_version": _SYMBOL_RASTER_PIPELINE_VERSION,
+            "build_time_utc": datetime.now(timezone.utc).isoformat(),
+        }
+        _write_cache_entry(cache_path, entry)
+        _emit_lookup_diagnostic(
+            diagnostic_callback,
+            {
+                "symbol_type_key": symbol_type_key,
+                "cache_hit": False,
+                "miss_reason": miss_reason,
+                "elapsed_ms": (time.perf_counter() - lookup_start) * 1000.0,
+            },
+        )
+        return points_xy_rel
+    finally:
+        _cleanup_export_tmp_dir(export_tmp_dir)
+
+
 def _apply_canonical_instance_transform(
     points_xy,
     placement_point,
@@ -821,256 +1093,27 @@ def _delete_temp_view(doc, tmp_view):
 
 
 def _collect_points_for_element(view, doc, element, config, diagnostic_callback=None):
-    lookup_start = time.perf_counter()
-    elem_id = _safe_int_element_id(element)
-    family_name, _ = _safe_type_sig_parts(element)
-
-    transform = None
-    bbox = None
-    try:
-        transform = element.GetTotalTransform()
-        bbox = element.get_BoundingBox(view)
-    except Exception as exc:
-        warnings.warn(
-            "DSE: symbol raster OBB failure for element {} ({}) : {}".format(elem_id, family_name, exc),
-            RuntimeWarning,
-            stacklevel=2,
-        )
+    context = _build_symbol_instance_context(view, element)
+    if context is None:
         return None, None
-
-    if transform is None or bbox is None:
+    points_xy_rel = _collect_canonical_points_for_context(
+        view=view,
+        doc=doc,
+        element=element,
+        context=context,
+        config=config,
+        diagnostic_callback=diagnostic_callback,
+    )
+    if points_xy_rel is None:
         return None, None
-
-    placement_point, axis_x, is_mirrored, rotation_deg = _instance_pose_in_view_2d(transform, view)
-    obb_width = abs(float(bbox.Max.X - bbox.Min.X))
-    obb_height = abs(float(bbox.Max.Y - bbox.Min.Y))
-
-    try:
-        (
-            cache_key,
-            family_name,
-            type_name,
-            view_scale,
-            detail_level,
-            is_line_based,
-            doc_scope,
-            type_id_int,
-        ) = _symbol_cache_key(element, view, obb_width=obb_width, obb_height=obb_height)
-    except Exception as exc:
-        warnings.warn(
-            "DSE: symbol raster key failure for element {} ({}) : {}".format(elem_id, family_name, exc),
-            RuntimeWarning,
-            stacklevel=2,
-        )
-        return None, None
-
-    cache_path = _cache_file_path(config, family_name, cache_key)
-    cached, miss_reason = _read_cache_entry(cache_path)
-    expected_entry = {
-        "cache_key": cache_key,
-        "doc_scope": doc_scope,
-        "family_name": family_name,
-        "view_scale": view_scale,
-        "detail_level": detail_level,
-        "is_line_based": is_line_based,
-    }
-    actual_length_ft = _actual_instance_length_ft(element, obb_width=obb_width, obb_height=obb_height)
-    length_scale_x = (actual_length_ft / _CANONICAL_LINE_LENGTH_FT) if is_line_based else 1.0
-    if miss_reason is None:
-        cached_points, miss_reason = _validate_cache_entry(cached, expected_entry)
-        if miss_reason is None:
-            _emit_lookup_diagnostic(
-                diagnostic_callback,
-                {
-                    "symbol_type_key": "{}|{}".format(family_name, type_name),
-                    "cache_hit": True,
-                    "miss_reason": None,
-                    "elapsed_ms": (time.perf_counter() - lookup_start) * 1000.0,
-                },
-            )
-            return elem_id, _apply_canonical_instance_transform(
-                cached_points,
-                placement_point=placement_point,
-                axis_x=axis_x,
-                mirrored=is_mirrored,
-                length_scale_x=length_scale_x,
-            )
-    miss_reason = str(miss_reason or "unknown")
-    symbol_type_key = "{}|{}".format(family_name, type_name)
-
-    if obb_width <= 0.0 or obb_height <= 0.0:
-        entry = {
-            "cache_schema": "symbol_raster.v1",
-            "cache_key": cache_key,
-            "family_name": family_name,
-            "view_scale": view_scale,
-            "detail_level": detail_level,
-            "is_line_based": is_line_based,
-            "doc_scope": doc_scope,
-            "obb_width": obb_width,
-            "obb_height": obb_height,
-            "points": [],
-            "pipeline_version": _SYMBOL_RASTER_PIPELINE_VERSION,
-            "build_time_utc": datetime.now(timezone.utc).isoformat(),
-        }
-        _write_cache_entry(cache_path, entry)
-        _emit_lookup_diagnostic(
-            diagnostic_callback,
-            {
-                "symbol_type_key": symbol_type_key,
-                "cache_hit": False,
-                "miss_reason": miss_reason,
-                "elapsed_ms": (time.perf_counter() - lookup_start) * 1000.0,
-            },
-        )
-        return elem_id, []
-
-    tmp_view = None
-    canonical_bounds = None
-    png_path = None
-    retained_png_path = None
-    export_tmp_dir = None
-    try:
-        tmp_view_result = _create_fresh_view_with_symbol(
-            doc,
-            view,
-            element,
-            obb_width=obb_width,
-            obb_height=obb_height,
-            include_canonical_bounds=True,
-        )
-        if isinstance(tmp_view_result, tuple):
-            tmp_view, canonical_bounds = tmp_view_result
-        else:
-            # Backward compatibility for test stubs that still return only a view-like object.
-            tmp_view = tmp_view_result
-        if tmp_view is None:
-            raise RuntimeError("failed to duplicate/isolate temporary view")
-        dpi = int(config.get("symbol_raster_dpi", 150))
-        png_path, export_tmp_dir = _export_temp_view_png(doc, tmp_view, dpi)
-        if png_path and os.path.exists(png_path):
-            retained_png_path = _retained_png_path(config, family_name, cache_key)
-            with open(png_path, "rb") as src:
-                blob = src.read()
-            with open(retained_png_path, "wb") as dst:
-                dst.write(blob)
-            png_path = retained_png_path
-    except Exception as exc:
-        _emit_lookup_diagnostic(
-            diagnostic_callback,
-            {
-                "symbol_type_key": symbol_type_key,
-                "cache_hit": False,
-                "miss_reason": "rebuild_export_failure: {}".format(exc),
-                "elapsed_ms": (time.perf_counter() - lookup_start) * 1000.0,
-            },
-        )
-        warnings.warn(
-            "DSE: symbol raster export failure for element {} ({}) : {}".format(elem_id, family_name, exc),
-            RuntimeWarning,
-            stacklevel=2,
-        )
-        _cleanup_export_tmp_dir(export_tmp_dir)
-        return None, None
-    finally:
-        _delete_temp_view(doc, tmp_view)
-
-    try:
-        if not canonical_bounds:
-            # Keep fallback deterministic if canonical bounds are unavailable.
-            if is_line_based:
-                canonical_bounds = {
-                    "min_x": 0.0,
-                    "max_x": float(_CANONICAL_LINE_LENGTH_FT),
-                    "min_y": -0.05 * float(_CANONICAL_LINE_LENGTH_FT),
-                    "max_y": 0.05 * float(_CANONICAL_LINE_LENGTH_FT),
-                }
-            else:
-                half_w = max(float(obb_width) * 0.5, 1.0 / 12.0)
-                half_h = max(float(obb_height) * 0.5, 1.0 / 12.0)
-                canonical_bounds = {
-                    "min_x": -half_w,
-                    "max_x": half_w,
-                    "min_y": -half_h,
-                    "max_y": half_h,
-                }
-        canonical_width = max(float(canonical_bounds["max_x"]) - float(canonical_bounds["min_x"]), 1e-9)
-        canonical_height = max(float(canonical_bounds["max_y"]) - float(canonical_bounds["min_y"]), 1e-9)
-        pad = max(canonical_width, canonical_height) * 0.25
-        pad = max(pad, 0.1)
-        raster_min_x = float(canonical_bounds["min_x"]) - pad
-        raster_max_x = float(canonical_bounds["max_x"]) + pad
-        raster_min_y = float(canonical_bounds["min_y"]) - pad
-        raster_max_y = float(canonical_bounds["max_y"]) + pad
-        raster_world_width = raster_max_x - raster_min_x
-        raster_world_height = raster_max_y - raster_min_y
-
-        points_xy_rel = []
-        if png_path and os.path.exists(png_path):
-            try:
-                img_width, img_height, lum = _png_to_luminance(png_path)
-                edges = _edge_pixels(img_width, img_height, lum)
-                for col, row in edges:
-                    # Canonical symbol-local point cache (type-local, pose-free representation),
-                    # derived from canonical temporary-symbol bounds (not observed instance OBB).
-                    x_rel = raster_min_x + (float(col) / float(max(1, img_width))) * raster_world_width
-                    y_rel = raster_min_y + (1.0 - (float(row) / float(max(1, img_height)))) * raster_world_height
-                    points_xy_rel.append([x_rel, y_rel])
-            except Exception as exc:
-                _emit_lookup_diagnostic(
-                    diagnostic_callback,
-                    {
-                        "symbol_type_key": symbol_type_key,
-                        "cache_hit": False,
-                        "miss_reason": "rebuild_decode_failure: {}".format(exc),
-                        "elapsed_ms": (time.perf_counter() - lookup_start) * 1000.0,
-                    },
-                )
-                warnings.warn(
-                    "DSE: symbol raster decode failure for element {} ({}) : {}".format(
-                        elem_id, family_name, exc
-                    ),
-                    RuntimeWarning,
-                    stacklevel=2,
-                )
-                return None, None
-
-        points_xy_rel = _subsample_points(points_xy_rel, int(config.get("symbol_raster_max_points", 200)))
-        points_xy = _apply_canonical_instance_transform(
-            points_xy_rel,
-            placement_point=placement_point,
-            axis_x=axis_x,
-            mirrored=is_mirrored,
-            length_scale_x=length_scale_x,
-        )
-        entry = {
-            "cache_schema": "symbol_raster.v1",
-            "cache_key": cache_key,
-            "family_name": family_name,
-            "view_scale": view_scale,
-            "detail_level": detail_level,
-            "is_line_based": is_line_based,
-            "doc_scope": doc_scope,
-            "obb_width": obb_width,
-            "obb_height": obb_height,
-            "canonical_bounds": canonical_bounds,
-            "points": points_xy_rel,
-            "pipeline_version": _SYMBOL_RASTER_PIPELINE_VERSION,
-            "build_time_utc": datetime.now(timezone.utc).isoformat(),
-        }
-        _write_cache_entry(cache_path, entry)
-        _emit_lookup_diagnostic(
-            diagnostic_callback,
-            {
-                "symbol_type_key": symbol_type_key,
-                "cache_hit": False,
-                "miss_reason": miss_reason,
-                "elapsed_ms": (time.perf_counter() - lookup_start) * 1000.0,
-            },
-        )
-        return elem_id, points_xy
-    finally:
-        _cleanup_export_tmp_dir(export_tmp_dir)
+    points_xy = _apply_canonical_instance_transform(
+        points_xy_rel,
+        placement_point=context["placement_point"],
+        axis_x=context["axis_x"],
+        mirrored=context["is_mirrored"],
+        length_scale_x=context["length_scale_x"],
+    )
+    return context["elem_id"], points_xy
 
 
 def collect_raster_points_for_view(view, doc=None, config=None, diagnostic_callback=None, elements=None):
@@ -1096,19 +1139,60 @@ def collect_raster_points_for_view(view, doc=None, config=None, diagnostic_callb
             )
             return out
 
+    grouped_instances = {}
     for element in elements:
         try:
             if not is_family_instance(element):
                 continue
-            elem_id, points = _collect_points_for_element(
-                view, doc, element, config, diagnostic_callback=diagnostic_callback
-            )
-            if elem_id is None:
+            context = _build_symbol_instance_context(view, element)
+            if context is None:
                 continue
-            out[int(elem_id)] = points or []
+            cache_key = context["cache_key"]
+            if cache_key not in grouped_instances:
+                grouped_instances[cache_key] = {
+                    "element": element,
+                    "context": context,
+                    "members": [],
+                }
+            grouped_instances[cache_key]["members"].append(context)
         except Exception as exc:
             elem_id = _safe_int_element_id(element)
             fam_name, _ = _safe_type_sig_parts(element)
+            warnings.warn(
+                "DSE: symbol raster unexpected failure for element {} ({}) : {}".format(
+                    elem_id, fam_name, exc
+                ),
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            continue
+
+    for group in grouped_instances.values():
+        try:
+            canonical_points = _collect_canonical_points_for_context(
+                view=view,
+                doc=doc,
+                element=group["element"],
+                context=group["context"],
+                config=config,
+                diagnostic_callback=diagnostic_callback,
+            )
+            if canonical_points is None:
+                continue
+            for context in group["members"]:
+                elem_id = context["elem_id"]
+                if elem_id is None:
+                    continue
+                out[int(elem_id)] = _apply_canonical_instance_transform(
+                    canonical_points,
+                    placement_point=context["placement_point"],
+                    axis_x=context["axis_x"],
+                    mirrored=context["is_mirrored"],
+                    length_scale_x=context["length_scale_x"],
+                )
+        except Exception as exc:
+            elem_id = _safe_int_element_id(group.get("element"))
+            fam_name, _ = _safe_type_sig_parts(group.get("element"))
             warnings.warn(
                 "DSE: symbol raster unexpected failure for element {} ({}) : {}".format(
                     elem_id, fam_name, exc
