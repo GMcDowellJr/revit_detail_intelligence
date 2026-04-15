@@ -17,6 +17,7 @@ from dse.revit_api.geometry_2d import to_view_local_2d
 
 _SYMBOL_RASTER_PIPELINE_VERSION = "symbol_raster.pipeline.v3"
 _CANONICAL_LINE_LENGTH_FT = 1.0  # 12 inches
+_RUN_MEMORY_SYMBOL_RASTER_CACHE = {}
 
 
 def _emit_lookup_diagnostic(callback, payload):
@@ -34,6 +35,29 @@ def _write_diag_json(_event, _payload):
 
 def _flush_diag_json_buffer():
     return
+
+
+def _memory_cache_get(cache_key):
+    payload = _RUN_MEMORY_SYMBOL_RASTER_CACHE.get(str(cache_key))
+    if payload is None:
+        return None
+    try:
+        return [[pt[0], pt[1]] for pt in payload]
+    except Exception:
+        return None
+
+
+def _memory_cache_set(cache_key, canonical_points):
+    if not isinstance(canonical_points, list):
+        return
+    frozen_points = []
+    for pt in canonical_points:
+        if not isinstance(pt, (list, tuple)) or len(pt) != 2:
+            return
+        if not _is_numeric(pt[0]) or not _is_numeric(pt[1]):
+            return
+        frozen_points.append((pt[0], pt[1]))
+    _RUN_MEMORY_SYMBOL_RASTER_CACHE[str(cache_key)] = tuple(frozen_points)
 
 
 def _safe_int_element_id(element):
@@ -515,6 +539,20 @@ def _collect_canonical_points_for_context(
     obb_height = context["obb_height"]
     symbol_type_key = "{}|{}".format(family_name, type_name)
     cache_path = _cache_file_path(config, family_name, cache_key)
+    in_memory_points = _memory_cache_get(cache_key)
+    if in_memory_points is not None:
+        _emit_lookup_diagnostic(
+            diagnostic_callback,
+            {
+                "symbol_type_key": symbol_type_key,
+                "cache_hit": True,
+                "cache_layer": "memory",
+                "miss_reason": None,
+                "elapsed_ms": (time.perf_counter() - lookup_start) * 1000.0,
+            },
+        )
+        return in_memory_points
+
     cached, miss_reason = _read_cache_entry(cache_path)
     expected_entry = {
         "cache_key": cache_key,
@@ -527,11 +565,13 @@ def _collect_canonical_points_for_context(
     if miss_reason is None:
         cached_points, miss_reason = _validate_cache_entry(cached, expected_entry)
         if miss_reason is None:
+            _memory_cache_set(cache_key, cached_points)
             _emit_lookup_diagnostic(
                 diagnostic_callback,
                 {
                     "symbol_type_key": symbol_type_key,
                     "cache_hit": True,
+                    "cache_layer": "disk",
                     "miss_reason": None,
                     "elapsed_ms": (time.perf_counter() - lookup_start) * 1000.0,
                 },
@@ -555,11 +595,13 @@ def _collect_canonical_points_for_context(
             "build_time_utc": datetime.now(timezone.utc).isoformat(),
         }
         _write_cache_entry(cache_path, entry)
+        _memory_cache_set(cache_key, entry["points"])
         _emit_lookup_diagnostic(
             diagnostic_callback,
             {
                 "symbol_type_key": symbol_type_key,
                 "cache_hit": False,
+                "cache_layer": "rebuild",
                 "miss_reason": miss_reason,
                 "elapsed_ms": (time.perf_counter() - lookup_start) * 1000.0,
             },
@@ -692,11 +734,13 @@ def _collect_canonical_points_for_context(
             "build_time_utc": datetime.now(timezone.utc).isoformat(),
         }
         _write_cache_entry(cache_path, entry)
+        _memory_cache_set(cache_key, entry["points"])
         _emit_lookup_diagnostic(
             diagnostic_callback,
             {
                 "symbol_type_key": symbol_type_key,
                 "cache_hit": False,
+                "cache_layer": "rebuild",
                 "miss_reason": miss_reason,
                 "elapsed_ms": (time.perf_counter() - lookup_start) * 1000.0,
             },
