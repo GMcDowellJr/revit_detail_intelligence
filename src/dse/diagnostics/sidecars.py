@@ -8,7 +8,7 @@ from dse.config import CONFIG
 from dse.io_paths import resolve_cache_root
 
 SEARCH_SIDECAR_SCHEMA = "sidecar.search.1.0"
-INDEX_SIDECAR_SCHEMA = "sidecar.index.1.1"
+INDEX_SIDECAR_SCHEMA = "sidecar.index.1.2"
 
 
 def percentile(sorted_values, p):
@@ -71,6 +71,74 @@ def _utc_now_iso():
     return datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
 
 
+def classify_cache_temperature(unique_symbol_types, new_symbol_types, reused_symbol_types):
+    if int(unique_symbol_types) <= 0:
+        return "none"
+    if int(new_symbol_types) > 0 and int(reused_symbol_types) > 0:
+        return "mixed"
+    if int(new_symbol_types) > 0:
+        return "cold"
+    return "warm"
+
+
+class ViewSymbolRasterPerfAccumulator:
+    """Collects symbol-raster lookup diagnostics for one view."""
+
+    def __init__(self):
+        self.lookups_total = 0
+        self.cache_hits = 0
+        self.cache_misses = 0
+        self.lookup_ms_total = 0.0
+        self.lookup_ms_hit_total = 0.0
+        self.lookup_ms_miss_total = 0.0
+        self.cache_miss_reasons = {}
+        self.symbol_types_seen = set()
+
+    def accumulate(self, lookup):
+        self.lookups_total += 1
+        symbol_type_key = str(lookup.get("symbol_type_key", "<unknown-symbol>"))
+        self.symbol_types_seen.add(symbol_type_key)
+        elapsed_ms = float(lookup.get("elapsed_ms", 0.0))
+        self.lookup_ms_total += elapsed_ms
+        was_hit = bool(lookup.get("cache_hit", False))
+        if was_hit:
+            self.cache_hits += 1
+            self.lookup_ms_hit_total += elapsed_ms
+            return
+
+        self.cache_misses += 1
+        self.lookup_ms_miss_total += elapsed_ms
+        reason = str(lookup.get("miss_reason", "unknown"))
+        self.cache_miss_reasons[reason] = self.cache_miss_reasons.get(reason, 0) + 1
+
+    def finalize(self, run_seen_symbol_types):
+        unique_symbol_types = len(self.symbol_types_seen)
+        new_types = {symbol_type for symbol_type in self.symbol_types_seen if symbol_type not in run_seen_symbol_types}
+        reused_types = self.symbol_types_seen.difference(new_types)
+        summary = {
+            "symbol_lookups_total": int(self.lookups_total),
+            "symbol_cache_hits": int(self.cache_hits),
+            "symbol_cache_misses": int(self.cache_misses),
+            "symbol_cache_hit_rate": 0.0
+            if self.lookups_total <= 0
+            else float(self.cache_hits) / float(self.lookups_total),
+            "symbol_lookup_ms_total": float(self.lookup_ms_total),
+            "symbol_lookup_ms_hit_total": float(self.lookup_ms_hit_total),
+            "symbol_lookup_ms_miss_total": float(self.lookup_ms_miss_total),
+            "symbol_cache_miss_reasons": dict(sorted(self.cache_miss_reasons.items())),
+            "unique_symbol_types_in_view": int(unique_symbol_types),
+            "new_symbol_types_built_in_view": int(len(new_types)),
+            "reused_symbol_types_in_view": int(len(reused_types)),
+        }
+        summary["cache_temperature"] = classify_cache_temperature(
+            summary["unique_symbol_types_in_view"],
+            summary["new_symbol_types_built_in_view"],
+            summary["reused_symbol_types_in_view"],
+        )
+        run_seen_symbol_types.update(self.symbol_types_seen)
+        return summary
+
+
 class IndexDiagnosticAccumulator:
     """Accumulates per-view stats incrementally as bundles are extracted."""
 
@@ -97,8 +165,10 @@ class IndexDiagnosticAccumulator:
         self._symbol_raster_types_miss = set()
         self._view_extraction_ms = []
         self._view_extraction_rows = []
+        self._cache_temperature_cohort_ms = {"cold": [], "mixed": [], "warm": [], "none": []}
+        self._run_seen_symbol_types = set()
 
-    def flush_view_record(self, path, bundle, status):
+    def flush_view_record(self, path, bundle, status, view_perf=None):
         """Append one JSON Lines record for this view to path."""
 
         presentation = getattr(bundle, "presentation_summary", None)
@@ -106,6 +176,24 @@ class IndexDiagnosticAccumulator:
         presentation_debug = getattr(presentation, "debug", None) or {}
         search_debug = getattr(search, "debug", None) or {}
         feature_summary = getattr(presentation, "feature_summary", None) or {}
+
+        perf = dict(view_perf or {})
+        for key, default in (
+            ("symbol_lookups_total", 0),
+            ("symbol_cache_hits", 0),
+            ("symbol_cache_misses", 0),
+            ("symbol_cache_hit_rate", 0.0),
+            ("symbol_lookup_ms_total", 0.0),
+            ("symbol_lookup_ms_hit_total", 0.0),
+            ("symbol_lookup_ms_miss_total", 0.0),
+            ("symbol_cache_miss_reasons", {}),
+            ("unique_symbol_types_in_view", 0),
+            ("new_symbol_types_built_in_view", 0),
+            ("reused_symbol_types_in_view", 0),
+            ("cache_temperature", "none"),
+        ):
+            if key not in perf:
+                perf[key] = default
 
         record = {
             "view_id": int(getattr(search, "view_id", -1)),
@@ -117,10 +205,17 @@ class IndexDiagnosticAccumulator:
             "curve_count": feature_summary.get("curve_count"),
             "ts_utc": datetime.utcnow().isoformat() + "Z",
         }
+        record.update(perf)
 
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "a", encoding="utf-8") as handle:
             handle.write(json.dumps(record) + "\n")
+
+    def create_view_symbol_perf_accumulator(self):
+        return ViewSymbolRasterPerfAccumulator()
+
+    def finalize_view_symbol_perf(self, view_perf):
+        return view_perf.finalize(self._run_seen_symbol_types)
 
     def accumulate(self, bundle, cache_status):
         self.count_total += 1
@@ -194,6 +289,12 @@ class IndexDiagnosticAccumulator:
             {"view_id": int(view_id), "display_name": str(display_name), "ms": duration}
         )
 
+    def accumulate_cache_temperature(self, cache_temperature, extraction_ms):
+        cohort = str(cache_temperature or "none")
+        if cohort not in self._cache_temperature_cohort_ms:
+            cohort = "none"
+        self._cache_temperature_cohort_ms[cohort].append(float(extraction_ms))
+
     def accumulate_error(self, view_id, view_name, error):
         self.count_total += 1
         self.count_errored += 1
@@ -250,6 +351,13 @@ class IndexDiagnosticAccumulator:
         symbol_miss_stats = distribution_stats(self._symbol_raster_miss_ms)
         view_stats = distribution_stats(self._view_extraction_ms)
         slowest_views = sorted(self._view_extraction_rows, key=lambda row: (-float(row["ms"]), row["view_id"]))[:5]
+        cache_temperature_summary = {}
+        for cohort in ("cold", "mixed", "warm", "none"):
+            timings = self._cache_temperature_cohort_ms.get(cohort, [])
+            cache_temperature_summary[cohort] = {
+                "view_count": len(timings),
+                "timing_ms": distribution_stats(timings),
+            }
 
         return {
             "schema_version": self.schema_version,
@@ -327,6 +435,13 @@ class IndexDiagnosticAccumulator:
                 "unique_symbol_types_hit": len(self._symbol_raster_types_hit),
                 "unique_symbol_types_miss": len(self._symbol_raster_types_miss),
             },
+            "miss_reason_summary": dict(sorted(self._symbol_raster_miss_reasons.items())),
+            "unique_symbol_type_totals": {
+                "total": len(self._symbol_raster_types_seen),
+                "hit": len(self._symbol_raster_types_hit),
+                "miss": len(self._symbol_raster_types_miss),
+            },
+            "cache_temperature_summary": cache_temperature_summary,
             "timing": {
                 "total_elapsed_ms": float(sum(self._view_extraction_ms)),
                 "mean_view_ms": view_stats["mean"],
@@ -334,6 +449,13 @@ class IndexDiagnosticAccumulator:
                 "p95_view_ms": view_stats["p95"],
                 "slowest_views": slowest_views,
             },
+            "timing_summary": {
+                "total_elapsed_ms": float(sum(self._view_extraction_ms)),
+                "mean_view_ms": view_stats["mean"],
+                "p50_view_ms": view_stats["p50"],
+                "p95_view_ms": view_stats["p95"],
+            },
+            "slowest_views": slowest_views,
             "flag_summary": {
                 "views_flagged": len(flagged_rows),
                 "flags": flagged_rows,

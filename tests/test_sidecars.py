@@ -9,6 +9,8 @@ from dse.diagnostics.sidecars import (
     SEARCH_SIDECAR_SCHEMA,
     IndexDiagnosticAccumulator,
     SearchDiagnosticBuilder,
+    ViewSymbolRasterPerfAccumulator,
+    classify_cache_temperature,
     distribution_stats,
     write_json_sidecar,
 )
@@ -158,8 +160,11 @@ def test_index_diagnostic_accumulator_finalize_with_flags_and_stopwords():
     assert payload["symbol_coverage"]["top_10_most_common_symbols"][0] == ["door", 5]
     assert payload["symbol_raster_summary"]["lookups_total"] == 2
     assert payload["symbol_raster_summary"]["miss_reasons"] == {"file not found": 1}
+    assert payload["miss_reason_summary"] == {"file not found": 1}
+    assert payload["unique_symbol_type_totals"] == {"total": 2, "hit": 1, "miss": 1}
     assert payload["timing"]["slowest_views"][0]["view_id"] == 2
     assert payload["timing"]["mean_view_ms"] == 17.0
+    assert payload["timing_summary"]["mean_view_ms"] == 17.0
 
 
 def test_search_diagnostic_builder_builds_schema_and_tiers():
@@ -264,6 +269,8 @@ def test_flush_view_record_creates_jsonl(tmp_path):
     assert len(rows) == 2
     assert rows[0]["view_id"] == 1
     assert rows[0]["cache_status"] == "rebuilt"
+    assert rows[0]["symbol_lookups_total"] == 0
+    assert rows[0]["cache_temperature"] == "none"
     assert rows[0]["ts_utc"].endswith("Z")
     assert rows[1]["view_id"] == 2
     assert rows[1]["cache_status"] == "hit_disk"
@@ -302,3 +309,65 @@ def test_flush_view_record_survives_missing_optional_fields(tmp_path):
     assert row["pt_count"] is None
     assert row["symbol_instances"] is None
     assert row["curve_count"] is None
+    assert row["symbol_lookups_total"] == 0
+    assert row["symbol_cache_miss_reasons"] == {}
+    assert row["cache_temperature"] == "none"
+
+
+def test_classify_cache_temperature_deterministic():
+    assert classify_cache_temperature(0, 0, 0) == "none"
+    assert classify_cache_temperature(1, 1, 0) == "cold"
+    assert classify_cache_temperature(2, 0, 2) == "warm"
+    assert classify_cache_temperature(2, 1, 1) == "mixed"
+
+
+def test_view_symbol_perf_cohorts_and_zero_symbol_views():
+    accum = IndexDiagnosticAccumulator()
+
+    view1 = ViewSymbolRasterPerfAccumulator()
+    view1.accumulate({"symbol_type_key": "A", "cache_hit": False, "miss_reason": "file not found", "elapsed_ms": 4.0})
+    view1_summary = accum.finalize_view_symbol_perf(view1)
+    assert view1_summary["cache_temperature"] == "cold"
+    assert view1_summary["new_symbol_types_built_in_view"] == 1
+    assert view1_summary["reused_symbol_types_in_view"] == 0
+
+    view2 = ViewSymbolRasterPerfAccumulator()
+    view2.accumulate({"symbol_type_key": "A", "cache_hit": True, "elapsed_ms": 1.0})
+    view2.accumulate({"symbol_type_key": "B", "cache_hit": False, "miss_reason": "parse error", "elapsed_ms": 5.0})
+    view2_summary = accum.finalize_view_symbol_perf(view2)
+    assert view2_summary["cache_temperature"] == "mixed"
+    assert view2_summary["symbol_lookups_total"] == 2
+    assert view2_summary["symbol_cache_hits"] == 1
+    assert view2_summary["symbol_cache_misses"] == 1
+    assert view2_summary["new_symbol_types_built_in_view"] == 1
+    assert view2_summary["reused_symbol_types_in_view"] == 1
+
+    view3 = ViewSymbolRasterPerfAccumulator()
+    view3.accumulate({"symbol_type_key": "A", "cache_hit": True, "elapsed_ms": 2.0})
+    view3_summary = accum.finalize_view_symbol_perf(view3)
+    assert view3_summary["cache_temperature"] == "warm"
+
+    view4 = ViewSymbolRasterPerfAccumulator()
+    view4_summary = accum.finalize_view_symbol_perf(view4)
+    assert view4_summary["cache_temperature"] == "none"
+    assert view4_summary["symbol_lookups_total"] == 0
+
+
+def test_finalize_cache_temperature_summary():
+    accum = IndexDiagnosticAccumulator()
+
+    for view_id, cohort, ms in (
+        (1, "cold", 10.0),
+        (2, "mixed", 20.0),
+        (3, "warm", 30.0),
+        (4, "none", 40.0),
+    ):
+        accum.accumulate(_bundle(view_id, tokens_stable={"x": 1.0}, geom=[1.0], symbols={}), "rebuilt")
+        accum.accumulate_view_timing(view_id, "V{}".format(view_id), ms)
+        accum.accumulate_cache_temperature(cohort, ms)
+
+    payload = accum.finalize(token_idf={}, token_df={}, config={"diagnostics": {"stopword_idf_floor": 0.5}})
+    assert payload["cache_temperature_summary"]["cold"]["view_count"] == 1
+    assert payload["cache_temperature_summary"]["mixed"]["timing_ms"]["mean"] == 20.0
+    assert payload["cache_temperature_summary"]["warm"]["timing_ms"]["p50"] == 30.0
+    assert payload["cache_temperature_summary"]["none"]["timing_ms"]["max"] == 40.0
