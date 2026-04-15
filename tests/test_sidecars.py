@@ -319,17 +319,15 @@ def test_flush_view_record_survives_missing_optional_fields(tmp_path):
 
 def test_classify_cache_temperature_deterministic():
     assert classify_cache_temperature(0, 0, 0) == "none"
-    assert classify_cache_temperature(1, 1, 0) == "cold"
-    assert classify_cache_temperature(2, 0, 2) == "warm"
+    assert classify_cache_temperature(1, 0, 1) == "cold"
+    assert classify_cache_temperature(2, 2, 0) == "warm"
     assert classify_cache_temperature(2, 1, 1) == "mixed"
 
 
 def test_view_symbol_perf_cohorts_and_zero_symbol_views():
-    accum = IndexDiagnosticAccumulator()
-
     view1 = ViewSymbolRasterPerfAccumulator()
     view1.accumulate({"symbol_type_key": "A", "cache_hit": False, "miss_reason": "file not found", "elapsed_ms": 4.0})
-    view1_summary = accum.finalize_view_symbol_perf(view1)
+    view1_summary = view1.finalize()
     assert view1_summary["cache_temperature"] == "cold"
     assert view1_summary["new_symbol_types_built_in_view"] == 1
     assert view1_summary["reused_symbol_types_in_view"] == 0
@@ -337,7 +335,7 @@ def test_view_symbol_perf_cohorts_and_zero_symbol_views():
     view2 = ViewSymbolRasterPerfAccumulator()
     view2.accumulate({"symbol_type_key": "A", "cache_hit": True, "elapsed_ms": 1.0})
     view2.accumulate({"symbol_type_key": "B", "cache_hit": False, "miss_reason": "parse error", "elapsed_ms": 5.0})
-    view2_summary = accum.finalize_view_symbol_perf(view2)
+    view2_summary = view2.finalize()
     assert view2_summary["cache_temperature"] == "mixed"
     assert view2_summary["symbol_lookups_total"] == 2
     assert view2_summary["symbol_cache_hits"] == 1
@@ -347,13 +345,31 @@ def test_view_symbol_perf_cohorts_and_zero_symbol_views():
 
     view3 = ViewSymbolRasterPerfAccumulator()
     view3.accumulate({"symbol_type_key": "A", "cache_hit": True, "elapsed_ms": 2.0})
-    view3_summary = accum.finalize_view_symbol_perf(view3)
-    assert view3_summary["cache_temperature"] == "warm"
+    view3.accumulate({"symbol_type_key": "A", "cache_hit": False, "miss_reason": "file not found", "elapsed_ms": 3.0})
+    view3_summary = view3.finalize()
+    assert view3_summary["cache_temperature"] == "mixed"
+    assert view3_summary["new_symbol_types_built_in_view"] == 1
+    assert view3_summary["reused_symbol_types_in_view"] == 0
+    assert view3_summary["unique_symbol_types_in_view"] == 1
 
     view4 = ViewSymbolRasterPerfAccumulator()
-    view4_summary = accum.finalize_view_symbol_perf(view4)
+    view4_summary = view4.finalize()
     assert view4_summary["cache_temperature"] == "none"
     assert view4_summary["symbol_lookups_total"] == 0
+
+
+def test_repeated_type_misses_stay_cold_without_run_seen_bias():
+    first = ViewSymbolRasterPerfAccumulator()
+    first.accumulate(
+        {"symbol_type_key": "Door|A", "cache_hit": False, "miss_reason": "file not found", "elapsed_ms": 2.0}
+    )
+    second = ViewSymbolRasterPerfAccumulator()
+    second.accumulate(
+        {"symbol_type_key": "Door|A", "cache_hit": False, "miss_reason": "file not found", "elapsed_ms": 2.0}
+    )
+
+    assert first.finalize()["cache_temperature"] == "cold"
+    assert second.finalize()["cache_temperature"] == "cold"
 
 
 def test_finalize_cache_temperature_summary():

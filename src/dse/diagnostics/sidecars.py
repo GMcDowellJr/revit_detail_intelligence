@@ -72,14 +72,16 @@ def _utc_now_iso():
     return datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
 
 
-def classify_cache_temperature(unique_symbol_types, new_symbol_types, reused_symbol_types):
-    if int(unique_symbol_types) <= 0:
+def classify_cache_temperature(symbol_lookups_total, symbol_cache_hits, symbol_cache_misses):
+    if int(symbol_lookups_total) <= 0:
         return "none"
-    if int(new_symbol_types) > 0 and int(reused_symbol_types) > 0:
-        return "mixed"
-    if int(new_symbol_types) > 0:
+    if int(symbol_cache_hits) <= 0:
         return "cold"
-    return "warm"
+    if int(symbol_cache_misses) <= 0:
+        return "warm"
+    if int(symbol_cache_hits) > 0 and int(symbol_cache_misses) > 0:
+        return "mixed"
+    return "none"
 
 
 class ViewSymbolRasterPerfAccumulator:
@@ -94,6 +96,8 @@ class ViewSymbolRasterPerfAccumulator:
         self.lookup_ms_miss_total = 0.0
         self.cache_miss_reasons = {}
         self.symbol_types_seen = set()
+        self.symbol_types_hit = set()
+        self.symbol_types_miss = set()
 
     def accumulate(self, lookup):
         self.lookups_total += 1
@@ -105,17 +109,19 @@ class ViewSymbolRasterPerfAccumulator:
         if was_hit:
             self.cache_hits += 1
             self.lookup_ms_hit_total += elapsed_ms
+            self.symbol_types_hit.add(symbol_type_key)
             return
 
         self.cache_misses += 1
         self.lookup_ms_miss_total += elapsed_ms
+        self.symbol_types_miss.add(symbol_type_key)
         reason = str(lookup.get("miss_reason", "unknown"))
         self.cache_miss_reasons[reason] = self.cache_miss_reasons.get(reason, 0) + 1
 
-    def finalize(self, run_seen_symbol_types):
+    def finalize(self):
         unique_symbol_types = len(self.symbol_types_seen)
-        new_types = {symbol_type for symbol_type in self.symbol_types_seen if symbol_type not in run_seen_symbol_types}
-        reused_types = self.symbol_types_seen.difference(new_types)
+        new_types = set(self.symbol_types_miss)
+        reused_types = {symbol_type for symbol_type in self.symbol_types_hit if symbol_type not in new_types}
         summary = {
             "symbol_lookups_total": int(self.lookups_total),
             "symbol_cache_hits": int(self.cache_hits),
@@ -132,11 +138,10 @@ class ViewSymbolRasterPerfAccumulator:
             "reused_symbol_types_in_view": int(len(reused_types)),
         }
         summary["cache_temperature"] = classify_cache_temperature(
-            summary["unique_symbol_types_in_view"],
-            summary["new_symbol_types_built_in_view"],
-            summary["reused_symbol_types_in_view"],
+            summary["symbol_lookups_total"],
+            summary["symbol_cache_hits"],
+            summary["symbol_cache_misses"],
         )
-        run_seen_symbol_types.update(self.symbol_types_seen)
         return summary
 
 
@@ -167,7 +172,6 @@ class IndexDiagnosticAccumulator:
         self._view_extraction_ms = []
         self._view_extraction_rows = []
         self._cache_temperature_cohort_ms = {"cold": [], "mixed": [], "warm": [], "none": []}
-        self._run_seen_symbol_types = set()
 
     def flush_view_record(self, path, bundle, status, view_perf=None):
         """Append one JSON Lines record for this view to path."""
@@ -217,7 +221,7 @@ class IndexDiagnosticAccumulator:
         return ViewSymbolRasterPerfAccumulator()
 
     def finalize_view_symbol_perf(self, view_perf):
-        return view_perf.finalize(self._run_seen_symbol_types)
+        return view_perf.finalize()
 
     def accumulate(self, bundle, cache_status):
         self.count_total += 1
