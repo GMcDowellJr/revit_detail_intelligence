@@ -87,7 +87,7 @@ def classify_cache_temperature(symbol_lookups_total, symbol_cache_hits, symbol_c
 class ViewSymbolRasterPerfAccumulator:
     """Collects symbol-raster lookup diagnostics for one view."""
 
-    def __init__(self):
+    def __init__(self, run_seen_symbol_types=None):
         self.lookups_total = 0
         self.cache_hits = 0
         self.cache_misses = 0
@@ -98,6 +98,8 @@ class ViewSymbolRasterPerfAccumulator:
         self.symbol_types_seen = set()
         self.symbol_types_hit = set()
         self.symbol_types_miss = set()
+        self._run_seen_symbol_types = run_seen_symbol_types
+        self._run_seen_before_view = set(run_seen_symbol_types or set())
 
     def accumulate(self, lookup):
         self.lookups_total += 1
@@ -120,8 +122,17 @@ class ViewSymbolRasterPerfAccumulator:
 
     def finalize(self):
         unique_symbol_types = len(self.symbol_types_seen)
-        new_types = set(self.symbol_types_miss)
-        reused_types = {symbol_type for symbol_type in self.symbol_types_hit if symbol_type not in new_types}
+        if self._run_seen_symbol_types is not None:
+            new_types = set(self.symbol_types_miss)
+            reused_types = {
+                symbol_type
+                for symbol_type in self.symbol_types_seen
+                if symbol_type in self._run_seen_before_view and symbol_type not in new_types
+            }
+            self._run_seen_symbol_types.update(self.symbol_types_seen)
+        else:
+            new_types = set(self.symbol_types_miss)
+            reused_types = {symbol_type for symbol_type in self.symbol_types_hit if symbol_type not in new_types}
         summary = {
             "symbol_lookups_total": int(self.lookups_total),
             "symbol_cache_hits": int(self.cache_hits),
@@ -169,6 +180,7 @@ class IndexDiagnosticAccumulator:
         self._symbol_raster_types_seen = set()
         self._symbol_raster_types_hit = set()
         self._symbol_raster_types_miss = set()
+        self._run_seen_symbol_types = set()
         self._view_extraction_ms = []
         self._view_extraction_rows = []
         self._cache_temperature_cohort_ms = {"cold": [], "mixed": [], "warm": [], "none": []}
@@ -218,7 +230,7 @@ class IndexDiagnosticAccumulator:
             handle.write(json.dumps(record) + "\n")
 
     def create_view_symbol_perf_accumulator(self):
-        return ViewSymbolRasterPerfAccumulator()
+        return ViewSymbolRasterPerfAccumulator(run_seen_symbol_types=self._run_seen_symbol_types)
 
     def finalize_view_symbol_perf(self, view_perf):
         return view_perf.finalize()

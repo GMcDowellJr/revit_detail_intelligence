@@ -2,6 +2,8 @@ import importlib
 import sys
 import types
 
+from dse.diagnostics.sidecars import IndexDiagnosticAccumulator
+
 sys.modules.setdefault("clr", types.SimpleNamespace(AddReference=lambda *_args, **_kwargs: None))
 if "Autodesk.Revit.DB" not in sys.modules:
     db_mod = types.ModuleType("Autodesk.Revit.DB")
@@ -51,9 +53,17 @@ def test_collect_raster_points_accepts_diagnostic_callback(monkeypatch):
     monkeypatch.setattr(symbol_raster, "is_family_instance", lambda _elem: True)
     monkeypatch.setattr(
         symbol_raster,
-        "_collect_points_for_element",
-        lambda *_args, **_kwargs: (7, [[0.0, 1.0]]),
+        "_build_symbol_instance_context",
+        lambda *_args, **_kwargs: {
+            "elem_id": 7,
+            "cache_key": "k",
+            "placement_point": (0.0, 0.0),
+            "axis_x": (1.0, 0.0),
+            "is_mirrored": False,
+            "length_scale_x": 1.0,
+        },
     )
+    monkeypatch.setattr(symbol_raster, "_collect_canonical_points_for_context", lambda **_kwargs: [[0.0, 1.0]])
 
     out = symbol_raster.collect_raster_points_for_view(_View(), diagnostic_callback=lambda row: calls.append(row))
 
@@ -79,9 +89,17 @@ def test_collect_raster_points_uses_caller_supplied_elements(monkeypatch):
     monkeypatch.setattr(symbol_raster, "is_family_instance", lambda _elem: True)
     monkeypatch.setattr(
         symbol_raster,
-        "_collect_points_for_element",
-        lambda *_args, **_kwargs: (9, [[2.0, 3.0]]),
+        "_build_symbol_instance_context",
+        lambda *_args, **_kwargs: {
+            "elem_id": 9,
+            "cache_key": "k",
+            "placement_point": (0.0, 0.0),
+            "axis_x": (1.0, 0.0),
+            "is_mirrored": False,
+            "length_scale_x": 1.0,
+        },
     )
+    monkeypatch.setattr(symbol_raster, "_collect_canonical_points_for_context", lambda **_kwargs: [[2.0, 3.0]])
 
     out = symbol_raster.collect_raster_points_for_view(_View(), elements=source_elements)
 
@@ -267,3 +285,113 @@ def test_cache_entry_validation_rejects_invalid_points_payload():
 
     _, reason = symbol_raster._validate_cache_entry(entry, expected)
     assert reason == "invalid points payload"
+
+
+def test_collect_raster_points_groups_same_type_lookup_once(monkeypatch):
+    symbol_raster = _load_symbol_raster()
+    lookup_calls = []
+
+    class _View(object):
+        Document = object()
+
+    class _Elem(object):
+        def __init__(self, name):
+            self.name = name
+
+    elem_a = _Elem("a")
+    elem_b = _Elem("b")
+
+    contexts = {
+        "a": {
+            "elem_id": 101,
+            "cache_key": "fam|type|k",
+            "placement_point": (10.0, 0.0),
+            "axis_x": (1.0, 0.0),
+            "is_mirrored": False,
+            "length_scale_x": 1.0,
+        },
+        "b": {
+            "elem_id": 102,
+            "cache_key": "fam|type|k",
+            "placement_point": (20.0, 0.0),
+            "axis_x": (1.0, 0.0),
+            "is_mirrored": False,
+            "length_scale_x": 1.0,
+        },
+    }
+
+    monkeypatch.setattr(symbol_raster, "get_view_elements", lambda _view: [elem_a, elem_b])
+    monkeypatch.setattr(symbol_raster, "is_family_instance", lambda _elem: True)
+    monkeypatch.setattr(symbol_raster, "_build_symbol_instance_context", lambda _view, e: dict(contexts[e.name]))
+    monkeypatch.setattr(
+        symbol_raster,
+        "_collect_canonical_points_for_context",
+        lambda **kwargs: lookup_calls.append(kwargs["context"]["cache_key"]) or [[1.0, 0.0]],
+    )
+
+    out = symbol_raster.collect_raster_points_for_view(_View())
+    assert lookup_calls == ["fam|type|k"]
+    assert out[101] == [[11.0, 0.0]]
+    assert out[102] == [[21.0, 0.0]]
+
+
+def test_collect_raster_points_applies_per_instance_transforms_after_group_lookup(monkeypatch):
+    symbol_raster = _load_symbol_raster()
+
+    class _View(object):
+        Document = object()
+
+    class _Elem(object):
+        def __init__(self, name):
+            self.name = name
+
+    elem_a = _Elem("a")
+    elem_b = _Elem("b")
+    monkeypatch.setattr(symbol_raster, "get_view_elements", lambda _view: [elem_a, elem_b])
+    monkeypatch.setattr(symbol_raster, "is_family_instance", lambda _elem: True)
+    monkeypatch.setattr(
+        symbol_raster,
+        "_build_symbol_instance_context",
+        lambda _view, e: {
+            "elem_id": 201 if e.name == "a" else 202,
+            "cache_key": "fam|type|k",
+            "placement_point": (0.0, 0.0) if e.name == "a" else (0.0, 5.0),
+            "axis_x": (1.0, 0.0) if e.name == "a" else (0.0, 1.0),
+            "is_mirrored": False,
+            "length_scale_x": 1.0 if e.name == "a" else 2.0,
+        },
+    )
+    monkeypatch.setattr(symbol_raster, "_collect_canonical_points_for_context", lambda **_kwargs: [[1.0, 0.0]])
+
+    out = symbol_raster.collect_raster_points_for_view(_View())
+    assert out[201] == [[1.0, 0.0]]
+    assert out[202] == [[0.0, 7.0]]
+
+
+def test_same_view_repeats_of_first_seen_type_remain_cold_for_temperature():
+    accum = IndexDiagnosticAccumulator()
+
+    view1 = accum.create_view_symbol_perf_accumulator()
+    view1.accumulate(
+        {"symbol_type_key": "Door|36x84", "cache_hit": False, "miss_reason": "file not found", "elapsed_ms": 2.0}
+    )
+    view1_summary = accum.finalize_view_symbol_perf(view1)
+    assert view1_summary["cache_temperature"] == "cold"
+    assert view1_summary["new_symbol_types_built_in_view"] == 1
+    assert view1_summary["reused_symbol_types_in_view"] == 0
+
+    view2 = accum.create_view_symbol_perf_accumulator()
+    view2.accumulate({"symbol_type_key": "Door|36x84", "cache_hit": True, "elapsed_ms": 1.0})
+    view2_summary = accum.finalize_view_symbol_perf(view2)
+    assert view2_summary["cache_temperature"] == "warm"
+    assert view2_summary["new_symbol_types_built_in_view"] == 0
+    assert view2_summary["reused_symbol_types_in_view"] == 1
+
+    view3 = accum.create_view_symbol_perf_accumulator()
+    view3.accumulate(
+        {"symbol_type_key": "Door|36x84", "cache_hit": False, "miss_reason": "version mismatch", "elapsed_ms": 3.0}
+    )
+    view3_summary = accum.finalize_view_symbol_perf(view3)
+    assert view3_summary["cache_temperature"] == "cold"
+    assert view3_summary["new_symbol_types_built_in_view"] == 1
+    assert view3_summary["reused_symbol_types_in_view"] == 0
