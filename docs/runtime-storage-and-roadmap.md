@@ -75,6 +75,27 @@ Outputs:
 - `...\output\many_to_many\<run_id>_edges.json`
 - `...\output\many_to_many\<run_id>_edges.csv`
 
+## 5) Symbol raster debug artifact retention (optional)
+
+Production symbol raster rebuilds always write the required durable cache JSON under:
+
+- `...\cache\symbol_rasters\<family>\<cache_key_hash>.json`
+
+Debug-only retained PNG copies are now optional and controlled by:
+
+- `CONFIG["symbol_raster_retain_debug_artifacts"]` (default: `False`)
+
+When enabled (`True`), rebuilds also retain exported PNG artifacts under:
+
+- `...\cache\symbol_rasters_png\<family>\<cache_key_hash>.png`
+
+When disabled (`False`, production default), the pipeline still decodes the temporary exported PNG to compute points, but skips the retained PNG copy/write. This reduces avoidable file I/O without changing normal cache behavior.
+
+Compatibility note:
+
+- Existing debugging workflows that inspect retained PNG files should explicitly set `symbol_raster_retain_debug_artifacts=True`.
+- Normal indexing and cache reuse behavior is unchanged with either setting.
+
 ## Deferred scope
 
 Still deferred:

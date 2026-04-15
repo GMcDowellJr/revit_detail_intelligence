@@ -47,6 +47,7 @@ CONFIG = {
     "preview_longest_side": 2400,
     "symbol_raster_dpi": 150,
     "symbol_raster_max_points": 200,
+    "symbol_raster_retain_debug_artifacts": False,
     "contact_sheet": {
         "enabled": False,
         "top_n_candidates": 9,
