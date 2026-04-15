@@ -1073,7 +1073,7 @@ def _collect_points_for_element(view, doc, element, config, diagnostic_callback=
         _cleanup_export_tmp_dir(export_tmp_dir)
 
 
-def collect_raster_points_for_view(view, doc=None, config=None, diagnostic_callback=None):
+def collect_raster_points_for_view(view, doc=None, config=None, diagnostic_callback=None, elements=None):
     """Collect view-local raster edge points for FamilyInstance elements.
 
     Returns: {element_id_int: [[x, y], ...]}
@@ -1085,15 +1085,16 @@ def collect_raster_points_for_view(view, doc=None, config=None, diagnostic_callb
     if view is None or doc is None:
         return out
 
-    try:
-        elements = get_view_elements(view)
-    except Exception as exc:
-        warnings.warn(
-            "DSE: symbol raster failed to read view elements: {}".format(exc),
-            RuntimeWarning,
-            stacklevel=2,
-        )
-        return out
+    if elements is None:
+        try:
+            elements = get_view_elements(view)
+        except Exception as exc:
+            warnings.warn(
+                "DSE: symbol raster failed to read view elements: {}".format(exc),
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            return out
 
     for element in elements:
         try:
