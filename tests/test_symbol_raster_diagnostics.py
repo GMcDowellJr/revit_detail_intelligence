@@ -386,3 +386,12 @@ def test_same_view_repeats_of_first_seen_type_remain_cold_for_temperature():
     assert view2_summary["cache_temperature"] == "warm"
     assert view2_summary["new_symbol_types_built_in_view"] == 0
     assert view2_summary["reused_symbol_types_in_view"] == 1
+
+    view3 = accum.create_view_symbol_perf_accumulator()
+    view3.accumulate(
+        {"symbol_type_key": "Door|36x84", "cache_hit": False, "miss_reason": "version mismatch", "elapsed_ms": 3.0}
+    )
+    view3_summary = accum.finalize_view_symbol_perf(view3)
+    assert view3_summary["cache_temperature"] == "cold"
+    assert view3_summary["new_symbol_types_built_in_view"] == 1
+    assert view3_summary["reused_symbol_types_in_view"] == 0

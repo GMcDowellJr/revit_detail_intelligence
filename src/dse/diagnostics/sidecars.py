@@ -123,8 +123,12 @@ class ViewSymbolRasterPerfAccumulator:
     def finalize(self):
         unique_symbol_types = len(self.symbol_types_seen)
         if self._run_seen_symbol_types is not None:
-            new_types = {symbol_type for symbol_type in self.symbol_types_seen if symbol_type not in self._run_seen_before_view}
-            reused_types = {symbol_type for symbol_type in self.symbol_types_seen if symbol_type in self._run_seen_before_view}
+            new_types = set(self.symbol_types_miss)
+            reused_types = {
+                symbol_type
+                for symbol_type in self.symbol_types_seen
+                if symbol_type in self._run_seen_before_view and symbol_type not in new_types
+            }
             self._run_seen_symbol_types.update(self.symbol_types_seen)
         else:
             new_types = set(self.symbol_types_miss)
