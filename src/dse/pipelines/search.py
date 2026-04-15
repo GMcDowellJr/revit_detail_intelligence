@@ -1,5 +1,4 @@
 import hashlib
-import inspect
 import json
 import math
 import os
@@ -627,6 +626,8 @@ def _extract_bundle_with_cache(view, write_legacy_cache_record=True, symbol_rast
         state_hash=state_ctx["state_hash"],
         pipeline_version=CONFIG["pipeline_version"],
         schema_version=SEARCH_SCHEMA_VERSION,
+        source_doc_id=state_ctx.get("source_doc_id"),
+        source_doc_name=state_ctx.get("source_doc_name"),
     )
     if cached is not None:
         cached.presentation_summary.debug["cache_status"] = status
@@ -732,18 +733,11 @@ def _load_all_cached_bundles(cache_root):
 
 
 def _extract_bundle_for_index(view, symbol_raster_lookup_callback=None):
-    try:
-        sig = inspect.signature(_extract_bundle_with_cache)
-    except Exception:
-        sig = None
-    kwargs = {}
-    if sig is not None and "write_legacy_cache_record" in sig.parameters:
-        kwargs["write_legacy_cache_record"] = False
-    if sig is not None and "symbol_raster_lookup_callback" in sig.parameters:
-        kwargs["symbol_raster_lookup_callback"] = symbol_raster_lookup_callback
-    if kwargs:
-        return _extract_bundle_with_cache(view, **kwargs)
-    return _extract_bundle_with_cache(view)
+    return _extract_bundle_with_cache(
+        view,
+        write_legacy_cache_record=False,
+        symbol_raster_lookup_callback=symbol_raster_lookup_callback,
+    )
 
 def index_views(views):
     cache_root = resolve_view_cache_root(CONFIG)

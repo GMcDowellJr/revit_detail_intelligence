@@ -105,7 +105,7 @@ def test_index_views_mixed_cache_hit_and_miss(monkeypatch):
     views = [FakeView(1), FakeView(2), object()]
     monkeypatch.setattr(search, "is_view", lambda value: hasattr(value, "Id"))
 
-    def fake_extract(view):
+    def fake_extract(view, write_legacy_cache_record=True, symbol_raster_lookup_callback=None):
         status = "hit_disk" if view.Id.IntegerValue == 1 else "rebuilt"
         return _bundle(view.Id.IntegerValue, cache_status=status), status
 
@@ -133,7 +133,10 @@ def test_index_views_writes_doc_scoped_cache_files(monkeypatch, tmp_path):
     monkeypatch.setattr(
         search,
         "_extract_bundle_with_cache",
-        lambda view: (_bundle(view.Id.IntegerValue, source_doc_id="doc-x"), "rebuilt"),
+        lambda view, write_legacy_cache_record=True, symbol_raster_lookup_callback=None: (
+            _bundle(view.Id.IntegerValue, source_doc_id="doc-x"),
+            "rebuilt",
+        ),
     )
     monkeypatch.setattr(search, "generate_and_cache_view_preview", lambda *_args, **_kwargs: "preview.png")
 
@@ -156,7 +159,14 @@ def test_index_views_counts_preview_failures(monkeypatch):
             self.Id = FakeId(value)
 
     monkeypatch.setattr(search, "is_view", lambda value: hasattr(value, "Id"))
-    monkeypatch.setattr(search, "_extract_bundle_with_cache", lambda view: (_bundle(view.Id.IntegerValue), "rebuilt"))
+    monkeypatch.setattr(
+        search,
+        "_extract_bundle_with_cache",
+        lambda view, write_legacy_cache_record=True, symbol_raster_lookup_callback=None: (
+            _bundle(view.Id.IntegerValue),
+            "rebuilt",
+        ),
+    )
     monkeypatch.setattr(search, "_write_doc_scoped_cache_record", lambda *_args, **_kwargs: None)
 
     def _boom(*_args, **_kwargs):
@@ -178,7 +188,14 @@ def test_index_views_counts_preview_failures_when_generate_returns_none(monkeypa
             self.Id = FakeId(value)
 
     monkeypatch.setattr(search, "is_view", lambda value: hasattr(value, "Id"))
-    monkeypatch.setattr(search, "_extract_bundle_with_cache", lambda view: (_bundle(view.Id.IntegerValue), "rebuilt"))
+    monkeypatch.setattr(
+        search,
+        "_extract_bundle_with_cache",
+        lambda view, write_legacy_cache_record=True, symbol_raster_lookup_callback=None: (
+            _bundle(view.Id.IntegerValue),
+            "rebuilt",
+        ),
+    )
     monkeypatch.setattr(search, "_write_doc_scoped_cache_record", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(search, "generate_and_cache_view_preview", lambda *_args, **_kwargs: None)
 
@@ -187,26 +204,83 @@ def test_index_views_counts_preview_failures_when_generate_returns_none(monkeypa
     assert summary["preview_failures"] == 2
 
 
-def test_extract_bundle_for_index_legacy_signature_compatibility(monkeypatch):
+def test_extract_bundle_for_index_delegates_without_compat_shim(monkeypatch):
     class FakeId(object):
         IntegerValue = 31
 
     class FakeView(object):
         Id = FakeId()
 
+    calls = []
+
+    def fake_extract(view, write_legacy_cache_record=True, symbol_raster_lookup_callback=None):
+        calls.append((write_legacy_cache_record, symbol_raster_lookup_callback))
+        return _bundle(view.Id.IntegerValue), "rebuilt"
+
     monkeypatch.setattr(
         search,
         "_extract_bundle_with_cache",
-        lambda view: (_bundle(view.Id.IntegerValue), "rebuilt"),
+        fake_extract,
     )
 
-    bundle, status = search._extract_bundle_for_index(
-        FakeView(),
-        symbol_raster_lookup_callback=lambda _row: None,
-    )
+    def callback(_row):
+        return None
+
+    bundle, status = search._extract_bundle_for_index(FakeView(), symbol_raster_lookup_callback=callback)
 
     assert bundle.search_features.view_id == 31
     assert status == "rebuilt"
+    assert calls == [(False, callback)]
+
+
+def test_index_views_writes_doc_scoped_cache_without_legacy_entry(monkeypatch, tmp_path):
+    class FakeId(object):
+        def __init__(self, value):
+            self.IntegerValue = value
+
+    class FakeView(object):
+        def __init__(self, value):
+            self.Id = FakeId(value)
+
+    cache_root = str(tmp_path / "cache")
+    monkeypatch.setattr(search, "is_view", lambda value: hasattr(value, "Id"))
+    monkeypatch.setattr(search, "resolve_view_cache_root", lambda _cfg: cache_root)
+    monkeypatch.setattr(search, "extract_feature_bundle", lambda view, state_ctx=None: _bundle(view.Id.IntegerValue))
+    monkeypatch.setattr(search, "_build_state_context", lambda *_args, **_kwargs: {"state_hash": "s1"})
+    monkeypatch.setattr(search, "generate_and_cache_view_preview", lambda *_args, **_kwargs: "preview.png")
+
+    summary = search.index_views([FakeView(1)])
+    assert summary["indexed"] == 1
+
+    out_dir = tmp_path / "cache" / "view_features"
+    files = sorted([name for name in os.listdir(str(out_dir)) if name.startswith("view_1__doc_")])
+    assert len(files) == 1
+    assert not (out_dir / "view_1.json").exists()
+
+
+def test_index_views_second_run_hits_disk_from_doc_scoped_cache(monkeypatch, tmp_path):
+    class FakeId(object):
+        def __init__(self, value):
+            self.IntegerValue = value
+
+    class FakeView(object):
+        def __init__(self, value):
+            self.Id = FakeId(value)
+
+    cache_root = str(tmp_path / "cache")
+    monkeypatch.setattr(search, "is_view", lambda value: hasattr(value, "Id"))
+    monkeypatch.setattr(search, "resolve_view_cache_root", lambda _cfg: cache_root)
+    monkeypatch.setattr(search, "extract_feature_bundle", lambda view, state_ctx=None: _bundle(view.Id.IntegerValue))
+    monkeypatch.setattr(search, "_build_state_context", lambda *_args, **_kwargs: {"state_hash": "s1"})
+    monkeypatch.setattr(search, "generate_and_cache_view_preview", lambda *_args, **_kwargs: "preview.png")
+
+    search.GLOBAL_VIEW_FEATURE_CACHE.entries = {}
+    first = search.index_views([FakeView(1)])
+    search.GLOBAL_VIEW_FEATURE_CACHE.entries = {}
+    second = search.index_views([FakeView(1)])
+
+    assert first["cache_statuses"][1] == "rebuilt"
+    assert second["cache_statuses"][1] == "hit_disk"
 
 
 def test_load_all_cached_bundles_empty_dir(tmp_path):

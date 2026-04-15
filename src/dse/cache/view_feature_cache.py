@@ -1,3 +1,5 @@
+import glob
+import hashlib
 import json
 import os
 import warnings
@@ -91,14 +93,53 @@ def deserialize_cache_entry(payload_txt: str) -> ViewFeatureCacheEntry:
     )
 
 
-def cache_file_for_view(cache_root: str, view_id: int) -> str:
-    return os.path.join(cache_root, "view_features", "view_{}.json".format(int(view_id)))
+def _doc_scope_from_source(source_doc_id: Optional[str], source_doc_name: Optional[str]) -> Optional[str]:
+    source_doc_id = None if source_doc_id is None else str(source_doc_id).strip() or None
+    source_doc_name = None if source_doc_name is None else str(source_doc_name).strip() or None
+    payload = {
+        "source_doc_id": source_doc_id,
+        "source_doc_name": source_doc_name,
+    }
+    if payload["source_doc_id"] is None and payload["source_doc_name"] is None:
+        payload = {"source_scope": "<no-doc>"}
+    txt = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return hashlib.sha1(txt.encode("utf-8")).hexdigest()[:16]
 
 
-def read_cache_record(cache_root: str, view_id: int) -> Optional[ViewFeatureCacheEntry]:
-    path = cache_file_for_view(cache_root, view_id)
+def _doc_scope_from_bundle(bundle: ViewFeatureBundle) -> Optional[str]:
+    search_features = getattr(bundle, "search_features", None)
+    return _doc_scope_from_source(
+        getattr(search_features, "source_doc_id", None),
+        getattr(search_features, "source_doc_name", None),
+    )
+
+
+def cache_file_for_view(cache_root: str, view_id: int, doc_scope: Optional[str] = None) -> str:
+    view_dir = os.path.join(cache_root, "view_features")
+    if doc_scope:
+        filename = "view_{}__doc_{}.json".format(int(view_id), doc_scope)
+        return os.path.join(view_dir, filename)
+    pattern = os.path.join(view_dir, "view_{}__doc_*.json".format(int(view_id)))
+    matches = sorted(glob.glob(pattern))
+    if matches:
+        return matches[0]
+    return os.path.join(view_dir, "view_{}.json".format(int(view_id)))
+
+
+def read_cache_record(
+    cache_root: str,
+    view_id: int,
+    source_doc_id: Optional[str] = None,
+    source_doc_name: Optional[str] = None,
+) -> Optional[ViewFeatureCacheEntry]:
+    doc_scope = _doc_scope_from_source(source_doc_id, source_doc_name)
+    path = cache_file_for_view(cache_root, view_id, doc_scope=doc_scope)
     if not os.path.exists(path):
-        return None
+        if doc_scope is None:
+            return None
+        path = cache_file_for_view(cache_root, view_id)
+        if not os.path.exists(path):
+            return None
     try:
         with open(path, "r", encoding="utf-8") as handle:
             return deserialize_cache_entry(handle.read())
@@ -112,15 +153,24 @@ def read_cache_record(cache_root: str, view_id: int) -> Optional[ViewFeatureCach
 
 
 def write_cache_record(cache_root: str, entry: ViewFeatureCacheEntry) -> str:
-    path = cache_file_for_view(cache_root, entry.view_id)
+    doc_scope = _doc_scope_from_bundle(entry.payload)
+    path = cache_file_for_view(cache_root, entry.view_id, doc_scope=doc_scope)
     ensure_dir(os.path.dirname(path))
     with open(path, "w", encoding="utf-8") as handle:
         handle.write(serialize_cache_entry(entry))
     return path
 
 
-def invalidate_cache_record(cache_root: str, view_id: int) -> bool:
-    path = cache_file_for_view(cache_root, view_id)
+def invalidate_cache_record(
+    cache_root: str,
+    view_id: int,
+    source_doc_id: Optional[str] = None,
+    source_doc_name: Optional[str] = None,
+) -> bool:
+    doc_scope = _doc_scope_from_source(source_doc_id, source_doc_name)
+    path = cache_file_for_view(cache_root, view_id, doc_scope=doc_scope)
+    if not os.path.exists(path) and doc_scope is not None:
+        path = cache_file_for_view(cache_root, view_id)
     if not os.path.exists(path):
         return False
     os.remove(path)
@@ -135,12 +185,14 @@ def get_cached_bundle_with_diagnostics(
     state_hash: str,
     pipeline_version: str,
     schema_version: str,
+    source_doc_id: Optional[str] = None,
+    source_doc_name: Optional[str] = None,
 ) -> Tuple[Optional[ViewFeatureBundle], str]:
     payload = in_memory_cache.get_if_current(view_id, state_hash, pipeline_version, schema_version)
     if payload is not None:
         return payload, "hit_memory"
 
-    disk_entry = read_cache_record(cache_root, view_id)
+    disk_entry = read_cache_record(cache_root, view_id, source_doc_id=source_doc_id, source_doc_name=source_doc_name)
     if disk_entry is None:
         return None, "miss"
 
@@ -149,7 +201,7 @@ def get_cached_bundle_with_diagnostics(
         or disk_entry.pipeline_version != pipeline_version
         or disk_entry.schema_version != schema_version
     ):
-        invalidate_cache_record(cache_root, view_id)
+        invalidate_cache_record(cache_root, view_id, source_doc_id=source_doc_id, source_doc_name=source_doc_name)
         return None, "invalidated"
 
     in_memory_cache.put(disk_entry)
