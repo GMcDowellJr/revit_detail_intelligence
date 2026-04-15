@@ -758,9 +758,9 @@ def index_views(views):
             continue
         view_symbol_perf = accum.create_view_symbol_perf_accumulator()
 
-        def _symbol_lookup_callback(lookup):
+        def _symbol_lookup_callback(lookup, _view_symbol_perf=view_symbol_perf):
             accum.accumulate_symbol_raster_lookup(lookup)
-            view_symbol_perf.accumulate(lookup)
+            _view_symbol_perf.accumulate(lookup)
 
         extraction_start = time.perf_counter()
         try:
