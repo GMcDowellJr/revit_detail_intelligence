@@ -2,6 +2,8 @@ import importlib
 import sys
 import types
 
+import pytest
+
 from dse.diagnostics.sidecars import IndexDiagnosticAccumulator
 
 sys.modules.setdefault("clr", types.SimpleNamespace(AddReference=lambda *_args, **_kwargs: None))
@@ -37,6 +39,12 @@ def _load_symbol_raster():
     if "dse.revit_api.symbol_raster" in sys.modules:
         return sys.modules["dse.revit_api.symbol_raster"]
     return importlib.import_module("dse.revit_api.symbol_raster")
+
+
+@pytest.fixture(autouse=True)
+def _clear_symbol_raster_memory_cache():
+    symbol_raster = _load_symbol_raster()
+    symbol_raster._RUN_MEMORY_SYMBOL_RASTER_CACHE.clear()
 
 
 def test_collect_raster_points_accepts_diagnostic_callback(monkeypatch):
