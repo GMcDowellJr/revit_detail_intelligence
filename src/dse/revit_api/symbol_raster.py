@@ -1024,7 +1024,7 @@ def _suppress_surface_patterns_for_visible_categories(tmp_view):
         import clr
 
         clr.AddReference("RevitAPI")
-        from Autodesk.Revit.DB import OverrideGraphicSettings
+        from Autodesk.Revit.DB import BuiltInCategory, ElementId, OverrideGraphicSettings
     except Exception:
         return 0
 
@@ -1071,6 +1071,8 @@ def _suppress_surface_patterns_for_visible_categories(tmp_view):
     # temporary raster only captures structural linework.
     updated_override = _set_ogs_bool("SurfaceForegroundPatternVisible", "SetSurfaceForegroundPatternVisible") or updated_override
     updated_override = _set_ogs_bool("SurfaceBackgroundPatternVisible", "SetSurfaceBackgroundPatternVisible") or updated_override
+    updated_override = _set_ogs_bool("ProjectionForegroundPatternVisible", "SetProjectionForegroundPatternVisible") or updated_override
+    updated_override = _set_ogs_bool("ProjectionBackgroundPatternVisible", "SetProjectionBackgroundPatternVisible") or updated_override
     updated_override = _set_ogs_bool("CutForegroundPatternVisible", "SetCutForegroundPatternVisible") or updated_override
     updated_override = _set_ogs_bool("CutBackgroundPatternVisible", "SetCutBackgroundPatternVisible") or updated_override
     updated_override = _set_ogs_bool("ProjectionFillPatternVisible", "SetProjectionFillPatternVisible") or updated_override
@@ -1079,6 +1081,18 @@ def _suppress_surface_patterns_for_visible_categories(tmp_view):
         return 0
 
     applied_count = 0
+    detail_items_category_id = None
+    try:
+        detail_items_category_id = ElementId(BuiltInCategory.OST_DetailComponents)
+    except Exception:
+        detail_items_category_id = None
+    if detail_items_category_id is not None:
+        try:
+            tmp_view.SetCategoryOverrides(detail_items_category_id, override_settings)
+            applied_count += 1
+        except Exception:
+            pass
+
     doc = getattr(tmp_view, "Document", None)
     categories = getattr(getattr(doc, "Settings", None), "Categories", None)
     if categories is None:
