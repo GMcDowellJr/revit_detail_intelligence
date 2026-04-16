@@ -15,7 +15,7 @@ from dse.io_paths import ensure_dir
 from dse.revit_api.collect import get_view_elements, is_family_instance
 from dse.revit_api.geometry_2d import to_view_local_2d
 
-_SYMBOL_RASTER_PIPELINE_VERSION = "symbol_raster.pipeline.v3"
+_SYMBOL_RASTER_PIPELINE_VERSION = "symbol_raster.pipeline.v4"
 _CANONICAL_LINE_LENGTH_FT = 1.0  # 12 inches
 _RUN_MEMORY_SYMBOL_RASTER_CACHE = {}
 _RUN_DOCUMENT_LOOKUP_CACHE = {
@@ -567,6 +567,9 @@ def _collect_canonical_points_for_context(
     doc_scope = context["doc_scope"]
     obb_width = context["obb_width"]
     obb_height = context["obb_height"]
+    obb_paper_width_inches = _obb_paper_inches(obb_width, view_scale)
+    obb_paper_height_inches = _obb_paper_inches(obb_height, view_scale)
+    px_w, px_h = _export_pixel_size_from_obb_paper_inches(obb_paper_width_inches, obb_paper_height_inches)
     symbol_type_key = "{}|{}".format(family_name, type_name)
     cache_path = _cache_file_path(config, family_name, cache_key)
     in_memory_points = _memory_cache_get(cache_key)
@@ -620,6 +623,10 @@ def _collect_canonical_points_for_context(
             "doc_scope": doc_scope,
             "obb_width": obb_width,
             "obb_height": obb_height,
+            "obb_paper_width_inches": obb_paper_width_inches,
+            "obb_paper_height_inches": obb_paper_height_inches,
+            "px_w": px_w,
+            "px_h": px_h,
             "points": [],
             "pipeline_version": _SYMBOL_RASTER_PIPELINE_VERSION,
             "build_time_utc": datetime.now(timezone.utc).isoformat(),
@@ -659,8 +666,7 @@ def _collect_canonical_points_for_context(
             tmp_view = tmp_view_result
         if tmp_view is None:
             raise RuntimeError("failed to duplicate/isolate temporary view")
-        dpi = int(config.get("symbol_raster_dpi", 150))
-        png_path, export_tmp_dir = _export_temp_view_png(doc, tmp_view, dpi)
+        png_path, export_tmp_dir = _export_temp_view_png(doc, tmp_view, px_w, px_h)
         if png_path and os.path.exists(png_path) and _retain_debug_artifacts_enabled(config):
             retained_png_path = _retained_png_path(config, family_name, cache_key)
             with open(png_path, "rb") as src:
@@ -758,6 +764,10 @@ def _collect_canonical_points_for_context(
             "doc_scope": doc_scope,
             "obb_width": obb_width,
             "obb_height": obb_height,
+            "obb_paper_width_inches": obb_paper_width_inches,
+            "obb_paper_height_inches": obb_paper_height_inches,
+            "px_w": px_w,
+            "px_h": px_h,
             "canonical_bounds": canonical_bounds,
             "points": points_xy_rel,
             "pipeline_version": _SYMBOL_RASTER_PIPELINE_VERSION,
@@ -806,22 +816,40 @@ def _apply_canonical_instance_transform(
     return out
 
 
-def _dpi_enum_for_value(target_dpi):
+def _obb_paper_inches(obb_ft, view_scale):
     try:
-        import clr
-
-        clr.AddReference("RevitAPI")
-        from Autodesk.Revit.DB import ImageResolution
-
-        allowed = [72, 150, 300, 600]
-        nearest = min(allowed, key=lambda v: abs(v - int(target_dpi)))
-        name = "DPI_{}".format(nearest)
-        return getattr(ImageResolution, name, ImageResolution.DPI_150)
+        obb_ft_value = float(obb_ft)
+        scale = float(view_scale)
+        if not math.isfinite(obb_ft_value) or not math.isfinite(scale):
+            return 0.0
+        scale = max(scale, 1.0)
+        paper_inches = (obb_ft_value * 12.0) / scale
+        if not math.isfinite(paper_inches):
+            return 0.0
+        return max(paper_inches, 0.0)
     except Exception:
-        return None
+        return 0.0
 
 
-def _export_temp_view_png(doc, tmp_view, dpi):
+def _export_pixel_size_from_obb_paper_inches(obb_paper_width_inches, obb_paper_height_inches):
+    try:
+        width_inches = float(obb_paper_width_inches)
+    except Exception:
+        width_inches = 0.0
+    if not math.isfinite(width_inches):
+        width_inches = 0.0
+    try:
+        height_inches = float(obb_paper_height_inches)
+    except Exception:
+        height_inches = 0.0
+    if not math.isfinite(height_inches):
+        height_inches = 0.0
+    px_w = max(64, min(512, int(math.ceil(width_inches * 96.0))))
+    px_h = max(64, min(512, int(math.ceil(height_inches * 96.0))))
+    return px_w, px_h
+
+
+def _export_temp_view_png(doc, tmp_view, px_w, px_h):
     try:
         import clr
 
@@ -842,9 +870,29 @@ def _export_temp_view_png(doc, tmp_view, dpi):
         opts.FilePath = file_stem_path
     if hasattr(opts, "OutputFileName"):
         opts.OutputFileName = file_stem_path
-    dpi_enum = _dpi_enum_for_value(dpi)
-    if dpi_enum is not None and hasattr(opts, "ImageResolution"):
-        opts.ImageResolution = dpi_enum
+    export_px_w = int(px_w)
+    export_px_h = int(px_h)
+    if hasattr(opts, "ZoomType"):
+        try:
+            from Autodesk.Revit.DB import ZoomFitType
+
+            opts.ZoomType = ZoomFitType.FitToPage
+        except Exception:
+            pass
+    if hasattr(opts, "FitDirection"):
+        try:
+            from Autodesk.Revit.DB import FitDirectionType
+
+            opts.FitDirection = (
+                FitDirectionType.Horizontal if export_px_w >= export_px_h else FitDirectionType.Vertical
+            )
+        except Exception:
+            pass
+    if hasattr(opts, "PixelSize"):
+        try:
+            opts.PixelSize = max(export_px_w, export_px_h)
+        except Exception:
+            pass
     if hasattr(opts, "SetViewsAndSheets"):
         opts.SetViewsAndSheets([tmp_view.Id])
     elif hasattr(opts, "ViewName"):
