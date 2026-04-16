@@ -1029,25 +1029,28 @@ def _suppress_surface_patterns_for_visible_categories(tmp_view):
         return 0
 
     override_settings = OverrideGraphicSettings()
+
+    def _set_ogs_bool(member_name, setter_name):
+        try:
+            setattr(override_settings, member_name, False)
+            return True
+        except Exception:
+            try:
+                getattr(override_settings, setter_name)(False)
+                return True
+            except Exception:
+                return False
+
     updated_override = False
-    try:
-        override_settings.SurfaceForegroundPatternVisible = False
-        updated_override = True
-    except Exception:
-        try:
-            override_settings.SetSurfaceForegroundPatternVisible(False)
-            updated_override = True
-        except Exception:
-            pass
-    try:
-        override_settings.SurfaceBackgroundPatternVisible = False
-        updated_override = True
-    except Exception:
-        try:
-            override_settings.SetSurfaceBackgroundPatternVisible(False)
-            updated_override = True
-        except Exception:
-            pass
+    # Revit 2025 pattern APIs can surface through different OGS members depending on
+    # category/material semantics. Disable all known fill/surface channels so the
+    # temporary raster only captures structural linework.
+    updated_override = _set_ogs_bool("SurfaceForegroundPatternVisible", "SetSurfaceForegroundPatternVisible") or updated_override
+    updated_override = _set_ogs_bool("SurfaceBackgroundPatternVisible", "SetSurfaceBackgroundPatternVisible") or updated_override
+    updated_override = _set_ogs_bool("CutForegroundPatternVisible", "SetCutForegroundPatternVisible") or updated_override
+    updated_override = _set_ogs_bool("CutBackgroundPatternVisible", "SetCutBackgroundPatternVisible") or updated_override
+    updated_override = _set_ogs_bool("ProjectionFillPatternVisible", "SetProjectionFillPatternVisible") or updated_override
+    updated_override = _set_ogs_bool("CutFillPatternVisible", "SetCutFillPatternVisible") or updated_override
     if not updated_override:
         return 0
 
