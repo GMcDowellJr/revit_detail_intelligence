@@ -189,15 +189,16 @@ def get_2d_curves_in_view(
     return curves, raster_points
 
 
-def _curve_angular_span_degrees(curve):
-    try:
-        start = float(curve.GetEndParameter(0))
-        end = float(curve.GetEndParameter(1))
-        span = abs(end - start)
-        if math.isfinite(span):
-            return max(0.0, min(360.0, math.degrees(span)))
-    except Exception:
-        pass
+def _curve_angular_span_degrees(curve, allow_param_span=True):
+    if allow_param_span:
+        try:
+            start = float(curve.GetEndParameter(0))
+            end = float(curve.GetEndParameter(1))
+            span = abs(end - start)
+            if math.isfinite(span):
+                return max(0.0, min(360.0, math.degrees(span)))
+        except Exception:
+            pass
     try:
         tess = list(curve.Tessellate() or [])
         if len(tess) < 3:
@@ -224,15 +225,16 @@ def _curve_angular_span_degrees(curve):
 
 def _collect_points_for_curve(curve):
     class_name = type(curve).__name__
+    is_spline_like = isinstance(curve, NurbSpline) or class_name in ("NurbsCurve",)
     try:
         if isinstance(curve, Line):
             return [curve.GetEndPoint(0), curve.GetEndPoint(1)]
     except Exception:
         pass
-    is_arc_like = isinstance(curve, (Arc, Ellipse, NurbSpline)) or class_name in ("NurbsCurve",)
+    is_arc_like = isinstance(curve, (Arc, Ellipse)) or is_spline_like
     if is_arc_like:
         try:
-            span_deg = _curve_angular_span_degrees(curve)
+            span_deg = _curve_angular_span_degrees(curve, allow_param_span=(not is_spline_like))
             n = max(2, int(math.floor(span_deg / 22.5)))
             n = min(8, n)
             if n <= 1:

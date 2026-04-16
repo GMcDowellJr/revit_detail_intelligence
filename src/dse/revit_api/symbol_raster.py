@@ -16,7 +16,7 @@ from dse.io_paths import ensure_dir
 from dse.revit_api.collect import get_view_elements, is_family_instance
 from dse.revit_api.geometry_2d import to_view_local_2d
 
-_SYMBOL_RASTER_PIPELINE_VERSION = "symbol_raster.pipeline.v4"
+_SYMBOL_RASTER_PIPELINE_VERSION = "symbol_raster.pipeline.v5"
 _CANONICAL_LINE_LENGTH_FT = 1.0  # 12 inches
 _RUN_MEMORY_SYMBOL_RASTER_CACHE = {}
 _RUN_DOCUMENT_LOOKUP_CACHE = {
