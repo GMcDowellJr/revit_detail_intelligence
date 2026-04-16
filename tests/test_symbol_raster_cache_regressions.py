@@ -259,6 +259,13 @@ def test_export_pixel_size_and_paper_inches_handle_non_finite_inputs():
     assert px_h == 64
 
 
+def test_export_pixel_size_from_obb_paper_inches_clamps_huge_finite_inputs():
+    symbol_raster = _load_symbol_raster()
+    px_w, px_h = symbol_raster._export_pixel_size_from_obb_paper_inches(1e308, 1e307)
+    assert px_w == 512
+    assert px_h == 512
+
+
 def test_collect_canonical_points_records_export_pixel_metadata(monkeypatch):
     symbol_raster = _load_symbol_raster()
     cache_store = {}
@@ -313,6 +320,55 @@ def test_collect_canonical_points_records_export_pixel_metadata(monkeypatch):
     assert entry["px_h"] == 64
     assert abs(entry["obb_paper_width_inches"] - 1.0) < 1e-9
     assert abs(entry["obb_paper_height_inches"] - 0.25) < 1e-9
+
+
+def test_collect_canonical_points_line_based_uses_canonical_bounds_for_export_pixels(monkeypatch):
+    symbol_raster = _load_symbol_raster()
+    export_args = {}
+
+    monkeypatch.setattr(symbol_raster, "_cache_file_path", lambda _cfg, _fam, _key: "cache.json")
+    monkeypatch.setattr(symbol_raster, "_read_cache_entry", lambda _path: (None, "file not found"))
+    monkeypatch.setattr(symbol_raster, "_write_cache_entry", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        symbol_raster,
+        "_create_fresh_view_with_symbol",
+        lambda *_args, **_kwargs: (
+            object(),
+            {"min_x": 0.0, "max_x": 1.0, "min_y": 0.0, "max_y": 0.1},
+        ),
+    )
+
+    def _capture_export(_doc, _tmp_view, px_w, px_h):
+        export_args["px_w"] = px_w
+        export_args["px_h"] = px_h
+        return None, None
+
+    monkeypatch.setattr(symbol_raster, "_export_temp_view_png", _capture_export)
+    monkeypatch.setattr(symbol_raster, "_delete_temp_view", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(symbol_raster, "_cleanup_export_tmp_dir", lambda _tmp: None)
+
+    context = {
+        "cache_key": "k",
+        "family_name": "Fam",
+        "type_name": "Type",
+        "view_scale": 1,
+        "detail_level": "2",
+        "is_line_based": True,
+        "doc_scope": "doc",
+        "obb_width": 1.0 / 12.0,
+        "obb_height": 0.25 / 12.0,
+        "elem_id": 1,
+    }
+    out = symbol_raster._collect_canonical_points_for_context(
+        view=object(),
+        doc=object(),
+        element=object(),
+        context=context,
+        config={},
+    )
+
+    assert out == []
+    assert export_args == {"px_w": 512, "px_h": 116}
 
 
 def test_collect_points_cache_hit_applies_line_length_scaling(monkeypatch):

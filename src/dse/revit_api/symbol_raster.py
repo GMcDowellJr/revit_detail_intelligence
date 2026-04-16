@@ -801,6 +801,21 @@ def _collect_canonical_points_for_context(
             tmp_view = tmp_view_result
         if tmp_view is None:
             raise RuntimeError("failed to duplicate/isolate temporary view")
+        if is_line_based:
+            resolved_bounds = canonical_bounds or {
+                "min_x": 0.0,
+                "max_x": float(_CANONICAL_LINE_LENGTH_FT),
+                "min_y": -0.05 * float(_CANONICAL_LINE_LENGTH_FT),
+                "max_y": 0.05 * float(_CANONICAL_LINE_LENGTH_FT),
+            }
+            canonical_width = max(float(resolved_bounds["max_x"]) - float(resolved_bounds["min_x"]), 1e-9)
+            canonical_height = max(float(resolved_bounds["max_y"]) - float(resolved_bounds["min_y"]), 1e-9)
+            canonical_paper_width_inches = _obb_paper_inches(canonical_width, view_scale)
+            canonical_paper_height_inches = _obb_paper_inches(canonical_height, view_scale)
+            px_w, px_h = _export_pixel_size_from_obb_paper_inches(
+                canonical_paper_width_inches,
+                canonical_paper_height_inches,
+            )
         png_path, export_tmp_dir = _export_temp_view_png(doc, tmp_view, px_w, px_h)
         if png_path and os.path.exists(png_path) and _retain_debug_artifacts_enabled(config):
             retained_png_path = _retained_png_path(config, family_name, cache_key)
@@ -990,6 +1005,9 @@ def _export_pixel_size_from_obb_paper_inches(obb_paper_width_inches, obb_paper_h
         height_inches = 0.0
     if not math.isfinite(height_inches):
         height_inches = 0.0
+    max_inches_for_ceil = 512.0 / 96.0
+    width_inches = min(max(width_inches, 0.0), max_inches_for_ceil)
+    height_inches = min(max(height_inches, 0.0), max_inches_for_ceil)
     px_w = max(64, min(512, int(math.ceil(width_inches * 96.0))))
     px_h = max(64, min(512, int(math.ceil(height_inches * 96.0))))
     return px_w, px_h
