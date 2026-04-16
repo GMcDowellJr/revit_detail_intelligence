@@ -1017,6 +1017,62 @@ def _get_drafting_view_family_type_id(doc):
     return None
 
 
+def _suppress_surface_patterns_for_visible_categories(tmp_view):
+    if tmp_view is None:
+        return 0
+    try:
+        import clr
+
+        clr.AddReference("RevitAPI")
+        from Autodesk.Revit.DB import OverrideGraphicSettings
+    except Exception:
+        return 0
+
+    override_settings = OverrideGraphicSettings()
+    updated_override = False
+    try:
+        override_settings.SurfaceForegroundPatternVisible = False
+        updated_override = True
+    except Exception:
+        try:
+            override_settings.SetSurfaceForegroundPatternVisible(False)
+            updated_override = True
+        except Exception:
+            pass
+    try:
+        override_settings.SurfaceBackgroundPatternVisible = False
+        updated_override = True
+    except Exception:
+        try:
+            override_settings.SetSurfaceBackgroundPatternVisible(False)
+            updated_override = True
+        except Exception:
+            pass
+    if not updated_override:
+        return 0
+
+    applied_count = 0
+    doc = getattr(tmp_view, "Document", None)
+    categories = getattr(getattr(doc, "Settings", None), "Categories", None)
+    if categories is None:
+        return 0
+    for category in categories:
+        category_id = getattr(category, "Id", None)
+        if category_id is None:
+            continue
+        try:
+            if tmp_view.GetCategoryHidden(category_id):
+                continue
+        except Exception:
+            pass
+        try:
+            tmp_view.SetCategoryOverrides(category_id, override_settings)
+            applied_count += 1
+        except Exception:
+            continue
+    return applied_count
+
+
 def _create_fresh_view_with_symbol(
     doc,
     view,
@@ -1060,6 +1116,7 @@ def _create_fresh_view_with_symbol(
         with scoped_transaction(doc, "DSE: create fresh view for symbol raster"):
             tmp_view = ViewDrafting.Create(doc, drafting_vft_id)
             tmp_view.Scale = view.Scale
+            _suppress_surface_patterns_for_visible_categories(tmp_view)
             if not symbol.IsActive:
                 symbol.Activate()
             try:
