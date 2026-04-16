@@ -15,7 +15,7 @@ from dse.io_paths import ensure_dir
 from dse.revit_api.collect import get_view_elements, is_family_instance
 from dse.revit_api.geometry_2d import to_view_local_2d
 
-_SYMBOL_RASTER_PIPELINE_VERSION = "symbol_raster.pipeline.v3"
+_SYMBOL_RASTER_PIPELINE_VERSION = "symbol_raster.pipeline.v4"
 _CANONICAL_LINE_LENGTH_FT = 1.0  # 12 inches
 _RUN_MEMORY_SYMBOL_RASTER_CACHE = {}
 _RUN_DOCUMENT_LOOKUP_CACHE = {
@@ -818,15 +818,34 @@ def _apply_canonical_instance_transform(
 
 def _obb_paper_inches(obb_ft, view_scale):
     try:
-        scale = max(float(view_scale), 1.0)
-        return max((float(obb_ft) * 12.0) / scale, 0.0)
+        obb_ft_value = float(obb_ft)
+        scale = float(view_scale)
+        if not math.isfinite(obb_ft_value) or not math.isfinite(scale):
+            return 0.0
+        scale = max(scale, 1.0)
+        paper_inches = (obb_ft_value * 12.0) / scale
+        if not math.isfinite(paper_inches):
+            return 0.0
+        return max(paper_inches, 0.0)
     except Exception:
         return 0.0
 
 
 def _export_pixel_size_from_obb_paper_inches(obb_paper_width_inches, obb_paper_height_inches):
-    px_w = max(64, min(512, int(math.ceil(float(obb_paper_width_inches) * 96.0))))
-    px_h = max(64, min(512, int(math.ceil(float(obb_paper_height_inches) * 96.0))))
+    try:
+        width_inches = float(obb_paper_width_inches)
+    except Exception:
+        width_inches = 0.0
+    if not math.isfinite(width_inches):
+        width_inches = 0.0
+    try:
+        height_inches = float(obb_paper_height_inches)
+    except Exception:
+        height_inches = 0.0
+    if not math.isfinite(height_inches):
+        height_inches = 0.0
+    px_w = max(64, min(512, int(math.ceil(width_inches * 96.0))))
+    px_h = max(64, min(512, int(math.ceil(height_inches * 96.0))))
     return px_w, px_h
 
 

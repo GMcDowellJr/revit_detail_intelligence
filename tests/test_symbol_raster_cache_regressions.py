@@ -247,6 +247,18 @@ def test_export_pixel_size_from_obb_paper_inches_uses_fixed_base_floor_and_ceili
     assert px_h == 512
 
 
+def test_export_pixel_size_and_paper_inches_handle_non_finite_inputs():
+    symbol_raster = _load_symbol_raster()
+
+    assert symbol_raster._obb_paper_inches(float("nan"), 1) == 0.0
+    assert symbol_raster._obb_paper_inches(float("inf"), 1) == 0.0
+    assert symbol_raster._obb_paper_inches(1.0, float("inf")) == 0.0
+
+    px_w, px_h = symbol_raster._export_pixel_size_from_obb_paper_inches(float("nan"), float("inf"))
+    assert px_w == 64
+    assert px_h == 64
+
+
 def test_collect_canonical_points_records_export_pixel_metadata(monkeypatch):
     symbol_raster = _load_symbol_raster()
     cache_store = {}
