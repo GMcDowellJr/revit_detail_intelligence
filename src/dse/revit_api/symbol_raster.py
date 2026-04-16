@@ -1030,6 +1030,30 @@ def _suppress_surface_patterns_for_visible_categories(tmp_view):
 
     override_settings = OverrideGraphicSettings()
 
+    # Prefer persistent view graphics configuration first (equivalent to the UI
+    # "Show Surface Patterns" toggle) so export honors suppression without relying
+    # on temporary view-state behaviors.
+    try:
+        graphics_options = tmp_view.GetGraphicsDisplayOptions()
+    except Exception:
+        graphics_options = None
+    persistent_view_setting_applied = False
+    if graphics_options is not None:
+        try:
+            graphics_options.ShowSurfacePatterns = False
+            persistent_view_setting_applied = True
+        except Exception:
+            try:
+                graphics_options.SetShowSurfacePatterns(False)
+                persistent_view_setting_applied = True
+            except Exception:
+                pass
+        if persistent_view_setting_applied:
+            try:
+                tmp_view.SetGraphicsDisplayOptions(graphics_options)
+            except Exception:
+                persistent_view_setting_applied = False
+
     def _set_ogs_bool(member_name, setter_name):
         try:
             setattr(override_settings, member_name, False)
@@ -1051,7 +1075,7 @@ def _suppress_surface_patterns_for_visible_categories(tmp_view):
     updated_override = _set_ogs_bool("CutBackgroundPatternVisible", "SetCutBackgroundPatternVisible") or updated_override
     updated_override = _set_ogs_bool("ProjectionFillPatternVisible", "SetProjectionFillPatternVisible") or updated_override
     updated_override = _set_ogs_bool("CutFillPatternVisible", "SetCutFillPatternVisible") or updated_override
-    if not updated_override:
+    if not updated_override and not persistent_view_setting_applied:
         return 0
 
     applied_count = 0
