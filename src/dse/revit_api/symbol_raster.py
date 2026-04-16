@@ -1017,6 +1017,93 @@ def _get_drafting_view_family_type_id(doc):
     return None
 
 
+def _suppress_filled_region_patterns(doc, tmp_view):
+    """Hide filled-region and family-instance surface patterns in a temp view."""
+    try:
+        import clr
+
+        clr.AddReference("RevitAPI")
+        from Autodesk.Revit.DB import (
+            FamilyInstance,
+            FilledRegion,
+            FilteredElementCollector,
+            OverrideGraphicSettings,
+        )
+    except Exception as exc:
+        warnings.warn(
+            "DSE: symbol raster failed to load RevitAPI for pattern suppression: {}".format(exc),
+            RuntimeWarning,
+        )
+        return
+
+    try:
+        override = OverrideGraphicSettings()
+        try:
+            override.SetSurfaceForegroundPatternVisible(False)
+            override.SetSurfaceBackgroundPatternVisible(False)
+        except Exception:
+            # Some Python bindings expose these as writable properties instead of setters.
+            override.SurfaceForegroundPatternVisible = False
+            override.SurfaceBackgroundPatternVisible = False
+    except Exception as exc:
+        warnings.warn(
+            "DSE: symbol raster failed to create FilledRegion suppression override: {}".format(exc),
+            RuntimeWarning,
+        )
+        return
+
+    def _collector_for_temp_view():
+        try:
+            return FilteredElementCollector(doc, tmp_view.Id)
+        except Exception:
+            # Test doubles may only support the no-arg constructor.
+            return FilteredElementCollector()
+
+    def _collect_of_class(cls):
+        collector = _collector_for_temp_view()
+        if not hasattr(collector, "OfClass"):
+            return []
+        return list(collector.OfClass(cls))
+
+    try:
+        filled_regions = _collect_of_class(FilledRegion)
+    except Exception as exc:
+        warnings.warn(
+            "DSE: symbol raster failed collecting FilledRegion elements in temp view: {}".format(exc),
+            RuntimeWarning,
+        )
+        filled_regions = []
+    for filled_region in filled_regions:
+        try:
+            tmp_view.SetElementOverrides(filled_region.Id, override)
+        except Exception as exc:
+            warnings.warn(
+                "DSE: symbol raster failed to suppress FilledRegion {}: {}".format(
+                    _safe_int_element_id(filled_region), exc
+                ),
+                RuntimeWarning,
+            )
+
+    try:
+        family_instances = _collect_of_class(FamilyInstance)
+    except Exception as exc:
+        warnings.warn(
+            "DSE: symbol raster failed collecting FamilyInstance elements in temp view: {}".format(exc),
+            RuntimeWarning,
+        )
+        family_instances = []
+    for family_instance in family_instances:
+        try:
+            tmp_view.SetElementOverrides(family_instance.Id, override)
+        except Exception as exc:
+            warnings.warn(
+                "DSE: symbol raster failed to suppress FamilyInstance {}: {}".format(
+                    _safe_int_element_id(family_instance), exc
+                ),
+                RuntimeWarning,
+            )
+
+
 def _create_fresh_view_with_symbol(
     doc,
     view,
@@ -1085,6 +1172,8 @@ def _create_fresh_view_with_symbol(
                         "family_name": str(getattr(getattr(symbol, "Family", None), "Name", "unknown")),
                     },
                 )
+            doc.Regenerate()
+            _suppress_filled_region_patterns(doc, tmp_view)
             doc.Regenerate()
             bb = tmp_inst.get_BoundingBox(tmp_view)
             canonical_bounds = None
