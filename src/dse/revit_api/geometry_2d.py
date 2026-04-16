@@ -3,15 +3,19 @@ import math
 import clr
 
 clr.AddReference("RevitAPI")
-from Autodesk.Revit.DB import (  # noqa: E402
-    CurveElement,
-    DetailCurve,
-    DetailLine,
-    FamilyInstance,
-    FilledRegion,
-    GeometryInstance,
-    Options,
-)
+import Autodesk.Revit.DB as DB  # noqa: E402
+
+Arc = getattr(DB, "Arc", type("ArcStub", (object,), {}))
+CurveElement = DB.CurveElement
+DetailCurve = DB.DetailCurve
+DetailLine = DB.DetailLine
+Ellipse = getattr(DB, "Ellipse", type("EllipseStub", (object,), {}))
+FamilyInstance = DB.FamilyInstance
+FilledRegion = DB.FilledRegion
+GeometryInstance = DB.GeometryInstance
+Line = getattr(DB, "Line", type("LineStub", (object,), {}))
+NurbSpline = getattr(DB, "NurbSpline", type("NurbSplineStub", (object,), {}))
+Options = DB.Options
 
 from dse.config import CONFIG, EPS  # noqa: E402
 from dse.revit_api.collect import get_view_elements  # noqa: E402
@@ -185,12 +189,67 @@ def get_2d_curves_in_view(
     return curves, raster_points
 
 
+def _curve_angular_span_degrees(curve, allow_param_span=True):
+    if allow_param_span:
+        try:
+            start = float(curve.GetEndParameter(0))
+            end = float(curve.GetEndParameter(1))
+            span = abs(end - start)
+            if math.isfinite(span):
+                return max(0.0, min(360.0, math.degrees(span)))
+        except Exception:
+            pass
+    try:
+        tess = list(curve.Tessellate() or [])
+        if len(tess) < 3:
+            return 0.0
+        total = 0.0
+        for i in range(1, len(tess) - 1):
+            a = tess[i - 1]
+            b = tess[i]
+            c = tess[i + 1]
+            v1 = (float(b.X - a.X), float(b.Y - a.Y), float(b.Z - a.Z))
+            v2 = (float(c.X - b.X), float(c.Y - b.Y), float(c.Z - b.Z))
+            n1 = math.sqrt((v1[0] * v1[0]) + (v1[1] * v1[1]) + (v1[2] * v1[2]))
+            n2 = math.sqrt((v2[0] * v2[0]) + (v2[1] * v2[1]) + (v2[2] * v2[2]))
+            if n1 <= EPS or n2 <= EPS:
+                continue
+            dot = (v1[0] * v2[0]) + (v1[1] * v2[1]) + (v1[2] * v2[2])
+            dot /= (n1 * n2)
+            dot = max(-1.0, min(1.0, dot))
+            total += math.degrees(math.acos(dot))
+        return max(0.0, min(360.0, total))
+    except Exception:
+        return 0.0
+
+
+def _collect_points_for_curve(curve):
+    class_name = type(curve).__name__
+    is_spline_like = isinstance(curve, NurbSpline) or class_name in ("NurbsCurve",)
+    try:
+        if isinstance(curve, Line):
+            return [curve.GetEndPoint(0), curve.GetEndPoint(1)]
+    except Exception:
+        pass
+    is_arc_like = isinstance(curve, (Arc, Ellipse)) or is_spline_like
+    if is_arc_like:
+        try:
+            span_deg = _curve_angular_span_degrees(curve, allow_param_span=(not is_spline_like))
+            n = max(2, int(math.floor(span_deg / 22.5)))
+            n = min(8, n)
+            if n <= 1:
+                n = 2
+            return [curve.Evaluate(float(i) / float(n - 1), True) for i in range(n)]
+        except Exception:
+            pass
+    return [curve.GetEndPoint(0), curve.GetEndPoint(1)]
+
+
 def endpoints_from_curves(curves):
     pts = []
     for curve in curves:
         try:
-            pts.append(curve.GetEndPoint(0))
-            pts.append(curve.GetEndPoint(1))
+            pts.extend(_collect_points_for_curve(curve))
         except Exception:
             # Single curve endpoint failure must not abort endpoint aggregation for the view.
             continue

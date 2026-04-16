@@ -2,6 +2,7 @@ import hashlib
 import json
 import math
 import os
+import random
 import re
 import struct
 import tempfile
@@ -15,7 +16,7 @@ from dse.io_paths import ensure_dir
 from dse.revit_api.collect import get_view_elements, is_family_instance
 from dse.revit_api.geometry_2d import to_view_local_2d
 
-_SYMBOL_RASTER_PIPELINE_VERSION = "symbol_raster.pipeline.v4"
+_SYMBOL_RASTER_PIPELINE_VERSION = "symbol_raster.pipeline.v5"
 _CANONICAL_LINE_LENGTH_FT = 1.0  # 12 inches
 _RUN_MEMORY_SYMBOL_RASTER_CACHE = {}
 _RUN_DOCUMENT_LOOKUP_CACHE = {
@@ -427,35 +428,167 @@ def _png_to_luminance(path):
     return width, height, luminance
 
 
-def _edge_pixels(width, height, luminance):
+def _foreground_edge_pixels(binary_image):
+    height = len(binary_image)
+    if height <= 0:
+        return []
+    width = len(binary_image[0]) if binary_image[0] is not None else 0
     edges = []
     for row in range(height):
         for col in range(width):
-            idx = row * width + col
-            fg = luminance[idx] < 128
-            if not fg:
+            if not binary_image[row][col]:
                 continue
-            is_edge = False
             for dc, dr in ((-1, 0), (1, 0), (0, -1), (0, 1)):
                 nc = col + dc
                 nr = row + dr
-                if nc < 0 or nr < 0 or nc >= width or nr >= height:
-                    is_edge = True
+                if nc < 0 or nr < 0 or nc >= width or nr >= height or not binary_image[nr][nc]:
+                    edges.append((col, row))
                     break
-                nidx = nr * width + nc
-                if luminance[nidx] >= 128:
-                    is_edge = True
-                    break
-            if is_edge:
-                edges.append((col, row))
     return edges
 
 
-def _subsample_points(points, max_points):
-    if max_points <= 0 or len(points) <= max_points:
-        return points
-    step = int(math.ceil(float(len(points)) / float(max_points)))
-    return points[:: max(1, step)]
+def _edge_pixels(width, height, luminance):
+    binary = []
+    for row in range(height):
+        start = row * width
+        row_pixels = []
+        for col in range(width):
+            row_pixels.append(luminance[start + col] < 128)
+        binary.append(row_pixels)
+    return _foreground_edge_pixels(binary)
+
+
+def _component_angular_subsample(points, max_points=8):
+    if not points:
+        return []
+    if len(points) <= max_points:
+        return list(points)
+    cx = sum(float(p[0]) for p in points) / float(len(points))
+    cy = sum(float(p[1]) for p in points) / float(len(points))
+    rows = []
+    for x, y in points:
+        rows.append((math.atan2(float(y) - cy, float(x) - cx), x, y))
+    rows.sort(key=lambda r: r[0])
+    out = []
+    step = float(len(rows)) / float(max_points)
+    for i in range(max_points):
+        idx = int(round(i * step))
+        idx = min(max(idx, 0), len(rows) - 1)
+        out.append((rows[idx][1], rows[idx][2]))
+    return out
+
+
+def _hough_endpoints(binary_image, min_length_px=3):
+    height = len(binary_image)
+    if height <= 0:
+        return [], 0
+    width = len(binary_image[0]) if binary_image[0] is not None else 0
+    if width <= 0:
+        return [], 0
+
+    edge_pixels = _foreground_edge_pixels(binary_image)
+    if not edge_pixels:
+        return [], 0
+
+    rng = random.Random(0)
+    sampled = list(edge_pixels)
+    rng.shuffle(sampled)
+    sampled = sampled[: max(128, min(len(sampled), 2048))]
+
+    theta_count = 90
+    thetas = []
+    for i in range(theta_count):
+        theta = (math.pi * float(i)) / float(theta_count)
+        thetas.append((math.cos(theta), math.sin(theta)))
+
+    votes = {}
+    for col, row in sampled:
+        x = float(col)
+        y = float(row)
+        for theta_idx, (ct, st) in enumerate(thetas):
+            rho_bin = int(round(((x * ct) + (y * st))))
+            key = (theta_idx, rho_bin)
+            votes[key] = votes.get(key, 0) + 1
+    if not votes:
+        return [], 0
+
+    sorted_bins = sorted(votes.items(), key=lambda kv: kv[1], reverse=True)
+    covered = set()
+    endpoints = []
+    segment_count = 0
+    for (theta_idx, rho_bin), _score in sorted_bins[: min(64, len(sorted_bins))]:
+        ct, st = thetas[theta_idx]
+        rho = float(rho_bin)
+        inliers = []
+        for pix_idx, (col, row) in enumerate(edge_pixels):
+            if pix_idx in covered:
+                continue
+            dist = abs((float(col) * ct) + (float(row) * st) - rho)
+            if dist <= 1.0:
+                proj = (float(col) * (-st)) + (float(row) * ct)
+                inliers.append((proj, col, row, pix_idx))
+        if len(inliers) < 2:
+            continue
+        inliers.sort(key=lambda r: r[0])
+
+        runs = []
+        run = [inliers[0]]
+        for item in inliers[1:]:
+            if abs(item[0] - run[-1][0]) <= 2.5:
+                run.append(item)
+            else:
+                if len(run) >= 2:
+                    runs.append(run)
+                run = [item]
+        if len(run) >= 2:
+            runs.append(run)
+
+        for seg in runs:
+            p0 = seg[0]
+            p1 = seg[-1]
+            length = math.hypot(float(p1[1]) - float(p0[1]), float(p1[2]) - float(p0[2]))
+            if length < float(min_length_px):
+                continue
+            endpoints.append((int(p0[1]), int(p0[2])))
+            endpoints.append((int(p1[1]), int(p1[2])))
+            segment_count += 1
+            for row in seg:
+                covered.add(row[3])
+
+    remaining_map = {}
+    for pix_idx, point in enumerate(edge_pixels):
+        if pix_idx not in covered:
+            remaining_map[pix_idx] = point
+    if not remaining_map:
+        return endpoints, segment_count
+
+    point_to_idx = {}
+    for pix_idx, (col, row) in remaining_map.items():
+        point_to_idx[(col, row)] = pix_idx
+
+    visited = set()
+    for seed_idx in list(remaining_map.keys()):
+        if seed_idx in visited:
+            continue
+        stack = [seed_idx]
+        visited.add(seed_idx)
+        component = []
+        while stack:
+            current = stack.pop()
+            cx, cy = remaining_map[current]
+            component.append((cx, cy))
+            for dc in (-1, 0, 1):
+                for dr in (-1, 0, 1):
+                    if dc == 0 and dr == 0:
+                        continue
+                    neighbor_idx = point_to_idx.get((cx + dc, cy + dr))
+                    if neighbor_idx is None or neighbor_idx in visited:
+                        continue
+                    visited.add(neighbor_idx)
+                    stack.append(neighbor_idx)
+        endpoints.extend(_component_angular_subsample(component, max_points=8))
+
+    return endpoints, segment_count
 
 
 def _instance_pose_in_view_2d(transform, view):
@@ -628,6 +761,8 @@ def _collect_canonical_points_for_context(
             "px_w": px_w,
             "px_h": px_h,
             "points": [],
+            "hough_segment_count": 0,
+            "endpoint_count": 0,
             "pipeline_version": _SYMBOL_RASTER_PIPELINE_VERSION,
             "build_time_utc": datetime.now(timezone.utc).isoformat(),
         }
@@ -726,11 +861,21 @@ def _collect_canonical_points_for_context(
         raster_world_height = raster_max_y - raster_min_y
 
         points_xy_rel = []
+        hough_segment_count = 0
+        endpoint_count = 0
         if png_path and os.path.exists(png_path):
             try:
                 img_width, img_height, lum = _png_to_luminance(png_path)
-                edges = _edge_pixels(img_width, img_height, lum)
-                for col, row in edges:
+                binary = []
+                for row in range(img_height):
+                    start = row * img_width
+                    row_pixels = []
+                    for col in range(img_width):
+                        row_pixels.append(lum[start + col] < 128)
+                    binary.append(row_pixels)
+                endpoints, hough_segment_count = _hough_endpoints(binary, min_length_px=3)
+                endpoint_count = len(endpoints)
+                for col, row in endpoints:
                     x_rel = raster_min_x + (float(col) / float(max(1, img_width))) * raster_world_width
                     y_rel = raster_min_y + (1.0 - (float(row) / float(max(1, img_height)))) * raster_world_height
                     points_xy_rel.append([x_rel, y_rel])
@@ -753,7 +898,6 @@ def _collect_canonical_points_for_context(
                 )
                 return None
 
-        points_xy_rel = _subsample_points(points_xy_rel, int(config.get("symbol_raster_max_points", 200)))
         entry = {
             "cache_schema": "symbol_raster.v1",
             "cache_key": cache_key,
@@ -770,6 +914,8 @@ def _collect_canonical_points_for_context(
             "px_h": px_h,
             "canonical_bounds": canonical_bounds,
             "points": points_xy_rel,
+            "hough_segment_count": hough_segment_count,
+            "endpoint_count": endpoint_count,
             "pipeline_version": _SYMBOL_RASTER_PIPELINE_VERSION,
             "build_time_utc": datetime.now(timezone.utc).isoformat(),
         }
