@@ -1033,6 +1033,7 @@ def _suppress_filled_region_patterns(doc, tmp_view):
         warnings.warn(
             "DSE: symbol raster failed to load RevitAPI for pattern suppression: {}".format(exc),
             RuntimeWarning,
+            stacklevel=2,
         )
         return
 
@@ -1049,6 +1050,7 @@ def _suppress_filled_region_patterns(doc, tmp_view):
         warnings.warn(
             "DSE: symbol raster failed to create FilledRegion suppression override: {}".format(exc),
             RuntimeWarning,
+            stacklevel=2,
         )
         return
 
@@ -1071,6 +1073,7 @@ def _suppress_filled_region_patterns(doc, tmp_view):
         warnings.warn(
             "DSE: symbol raster failed collecting FilledRegion elements in temp view: {}".format(exc),
             RuntimeWarning,
+            stacklevel=2,
         )
         filled_regions = []
     for filled_region in filled_regions:
@@ -1082,6 +1085,7 @@ def _suppress_filled_region_patterns(doc, tmp_view):
                     _safe_int_element_id(filled_region), exc
                 ),
                 RuntimeWarning,
+                stacklevel=2,
             )
 
     try:
@@ -1090,6 +1094,7 @@ def _suppress_filled_region_patterns(doc, tmp_view):
         warnings.warn(
             "DSE: symbol raster failed collecting FamilyInstance elements in temp view: {}".format(exc),
             RuntimeWarning,
+            stacklevel=2,
         )
         family_instances = []
     for family_instance in family_instances:
@@ -1101,6 +1106,7 @@ def _suppress_filled_region_patterns(doc, tmp_view):
                     _safe_int_element_id(family_instance), exc
                 ),
                 RuntimeWarning,
+                stacklevel=2,
             )
 
 
