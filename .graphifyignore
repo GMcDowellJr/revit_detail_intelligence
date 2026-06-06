@@ -1,0 +1,37 @@
+# Legacy / archive folders
+legacy/
+archive/
+
+# Golden test fixtures
+tests/fixtures/
+tests/golden/
+
+# Large generated exports
+**/*.json
+**/*.csv
+
+# Binary files
+*.pyc
+*.pyo
+*.pyd
+*.so
+*.dll
+*.exe
+*.bin
+*.pkl
+*.npy
+*.npz
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.ico
+*.woff
+*.woff2
+*.ttf
+*.eot
+
+# Graphify output directory
+graphify-out/
