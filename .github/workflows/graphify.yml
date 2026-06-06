@@ -1,0 +1,43 @@
+name: graphify
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install graphify
+        run: |
+          pip install "git+https://github.com/safishamsi/graphify.git@v8" openai
+
+      - name: Build knowledge graph
+        env:
+          OLLAMA_BASE_URL: https://openrouter.ai/api/v1
+          OLLAMA_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OLLAMA_MODEL: openai/gpt-4o-mini
+        run: graphify . --no-viz --backend ollama
+
+      - name: Export HTML
+        env:
+          OLLAMA_BASE_URL: https://openrouter.ai/api/v1
+          OLLAMA_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OLLAMA_MODEL: openai/gpt-4o-mini
+        run: graphify export html
+
+      - name: Publish to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./graphify-out
+          destination_dir: graphify-out
+          keep_files: true
