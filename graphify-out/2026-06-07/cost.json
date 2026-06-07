@@ -1,12 +1,6 @@
 {
-  "runs": [
-    {
-      "date": "2026-06-06T05:28:05.793800+00:00",
-      "input_tokens": 67662,
-      "output_tokens": 0,
-      "files": 70
-    }
-  ],
-  "total_input_tokens": 67662,
-  "total_output_tokens": 0
+  "tokens_in": 28888,
+  "tokens_out": 573,
+  "est_cost_usd": 0.0,
+  "backend": "openai/gpt-4o-mini"
 }
