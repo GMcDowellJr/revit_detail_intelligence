@@ -1,12 +1,18 @@
-# Graph Report - .  (2026-06-06)
+# Graph Report - revit_detail_intelligence  (2026-06-06)
 
 ## Corpus Check
-- Corpus is ~41,882 words - fits in a single context window. You may not need a graph.
+- 85 files · ~58,702 words
+- Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 683 nodes · 1389 edges · 44 communities (41 shown, 3 thin omitted)
+- 804 nodes · 1490 edges · 66 communities (57 shown, 9 thin omitted)
 - Extraction: 87% EXTRACTED · 13% INFERRED · 0% AMBIGUOUS · INFERRED: 187 edges (avg confidence: 0.77)
-- Token cost: 67,662 input · 0 output
+- Token cost: 0 input · 0 output
+
+## Graph Freshness
+- Built from commit: `e6555cba`
+- Run `git rev-parse HEAD` and compare to check if the graph is stale.
+- Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
 - [[_COMMUNITY_View Feature Cache|View Feature Cache]]
@@ -43,6 +49,28 @@
 - [[_COMMUNITY_CI and Contributing|CI and Contributing]]
 - [[_COMMUNITY_Dynamo Entrypoint|Dynamo Entrypoint]]
 - [[_COMMUNITY_PR Template|PR Template]]
+- [[_COMMUNITY_Community 44|Community 44]]
+- [[_COMMUNITY_Community 45|Community 45]]
+- [[_COMMUNITY_Community 46|Community 46]]
+- [[_COMMUNITY_Community 47|Community 47]]
+- [[_COMMUNITY_Community 48|Community 48]]
+- [[_COMMUNITY_Community 49|Community 49]]
+- [[_COMMUNITY_Community 50|Community 50]]
+- [[_COMMUNITY_Community 51|Community 51]]
+- [[_COMMUNITY_Community 52|Community 52]]
+- [[_COMMUNITY_Community 53|Community 53]]
+- [[_COMMUNITY_Community 54|Community 54]]
+- [[_COMMUNITY_Community 55|Community 55]]
+- [[_COMMUNITY_Community 56|Community 56]]
+- [[_COMMUNITY_Community 57|Community 57]]
+- [[_COMMUNITY_Community 58|Community 58]]
+- [[_COMMUNITY_Community 59|Community 59]]
+- [[_COMMUNITY_Community 60|Community 60]]
+- [[_COMMUNITY_Community 61|Community 61]]
+- [[_COMMUNITY_Community 62|Community 62]]
+- [[_COMMUNITY_Community 63|Community 63]]
+- [[_COMMUNITY_Community 64|Community 64]]
+- [[_COMMUNITY_Community 65|Community 65]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `find_similar_views()` - 22 edges
@@ -76,11 +104,11 @@
 - **Two-Stage Similarity Ranking (Stage-1 token/geom, Stage-2 raster re-rank)** — src_pseudocode_pipeline_find_similar_views, src_pseudocode_symbol_cache_stage2_rerank, docs_similarity_combined_score, docs_similarity_confidence_tiers, docs_pipeline_step8_confidence_ranking [INFERRED 0.85]
 - **Cache Layer Architecture (in-memory, disk, symbol, view raster)** — docs_feature_cache_review_view_feature_cache, docs_feature_cache_review_symbol_cache, docs_runtime_storage_two_layer_cache, src_pseudocode_symbol_cache_symbolcache, src_pseudocode_symbol_cache_viewrastersignature [INFERRED 0.85]
 
-## Communities (44 total, 3 thin omitted)
+## Communities (66 total, 9 thin omitted)
 
 ### Community 0 - "View Feature Cache"
-Cohesion: 0.09
-Nodes (49): _bundle_from_dict(), _bundle_to_dict(), cache_file_for_view(), deserialize_cache_entry(), _doc_scope_from_bundle(), _doc_scope_from_source(), get_cached_bundle_with_diagnostics(), invalidate_cache_record() (+41 more)
+Cohesion: 0.15
+Nodes (41): _bundle_from_dict(), _bundle_to_dict(), cache_file_for_view(), deserialize_cache_entry(), _doc_scope_from_bundle(), _doc_scope_from_source(), get_cached_bundle_with_diagnostics(), invalidate_cache_record() (+33 more)
 
 ### Community 1 - "Legacy Similarity Script"
 Cohesion: 0.07
@@ -92,7 +120,7 @@ Nodes (46): _actual_instance_length_ft(), _apply_canonical_instance_transform(),
 
 ### Community 3 - "Similarity Search Pipeline"
 Cohesion: 0.08
-Nodes (48): legacy_view_features_from_search(), Compatibility adapter for the existing stage-1 similarity scorer., ViewFeatures, _build_state_context(), _bundle_source_scope(), collect_token_data_for_view(), _doc_provenance(), _doc_scoped_cache_path() (+40 more)
+Nodes (46): _build_state_context(), _bundle_source_scope(), collect_token_data_for_view(), _doc_provenance(), _doc_scoped_cache_path(), _elapsed_ms(), element_base_info(), _extract_bundle_for_index() (+38 more)
 
 ### Community 4 - "Symbol Cache Layer"
 Cohesion: 0.11
@@ -100,15 +128,15 @@ Nodes (42): aggregate_symbol_descriptors(), build_symbol_descriptor(), build_val
 
 ### Community 5 - "IO Paths and File Routing"
 Cohesion: 0.09
-Nodes (40): ensure_dir(), resolve_contact_sheets_dir(), resolve_contacts_dir(), resolve_many_to_many_dir(), resolve_output_root(), resolve_preview_cache_dir(), run_stamp(), _cand_file_name() (+32 more)
+Nodes (42): resolve_index_sidecar_path(), ensure_dir(), resolve_cache_root(), resolve_contact_sheets_dir(), resolve_contacts_dir(), resolve_many_to_many_dir(), resolve_output_root(), resolve_preview_cache_dir() (+34 more)
 
 ### Community 6 - "Feature Cache Abstraction"
-Cohesion: 0.11
-Nodes (22): FeatureCache, Disk-backed JSON cache for ViewFeatures (roadmap track).  NOTE: The active v0.3, In-process + disk-backed cache for extracted ViewFeatures dicts.      Parameters, Return cached features dict or None., Store features dict and flush to disk., Remove all entries for a given view_id (any element_count)., Wipe the entire cache (memory + disk)., _make_cache() (+14 more)
+Cohesion: 0.16
+Nodes (7): FeatureCache, Disk-backed JSON cache for ViewFeatures (roadmap track).  NOTE: The active v0.3, In-process + disk-backed cache for extracted ViewFeatures dicts.      Parameters, Return cached features dict or None., Store features dict and flush to disk., Remove all entries for a given view_id (any element_count)., Wipe the entire cache (memory + disk).
 
 ### Community 7 - "Config and Fine Metrics"
-Cohesion: 0.14
-Nodes (22): default_idf_for_doc_count(), bbox_aspect_ratio(), build_fine_metrics(), linework_density(), bin_index(), geom_fingerprint_knn(), k_nearest_neighbors(), normalize_l1() (+14 more)
+Cohesion: 0.23
+Nodes (15): bbox_aspect_ratio(), build_fine_metrics(), linework_density(), bbox(), bbox_diagonal(), collect_curves_from_geometry(), _collect_points_for_curve(), _curve_angular_span_degrees() (+7 more)
 
 ### Community 8 - "Symbol Raster Analysis Scripts"
 Cohesion: 0.17
@@ -139,8 +167,8 @@ Cohesion: 0.19
 Nodes (8): build_config_snapshot(), distribution_stats(), percentile(), Collects timing checkpoints and builds the search sidecar payload., resolve_search_sidecar_path(), SearchDiagnosticBuilder, _utc_now_iso(), test_distribution_stats_non_empty_and_empty()
 
 ### Community 15 - "Sidecar Path Resolution"
-Cohesion: 0.17
-Nodes (11): resolve_index_sidecar_path(), write_json_sidecar(), resolve_cache_root(), build_token_df_from_features(), build_token_idf(), check_feature_richness(), find_similar_views(), apply_geom_dominant_suppression() (+3 more)
+Cohesion: 0.13
+Nodes (13): write_json_sidecar(), build_token_df_from_features(), build_token_idf(), check_feature_richness(), find_similar_views(), apply_geom_dominant_suppression(), derive_min_token_threshold(), effective_weights() (+5 more)
 
 ### Community 16 - "Architecture Docs (CLAUDE.md)"
 Cohesion: 0.18
@@ -187,8 +215,8 @@ Cohesion: 0.32
 Nodes (5): Return Dynamo-friendly score rows in a stable field order.      Row order:, to_dynamo_score_list(), Dynamo (CPython3) script for Revit 2025. Feature-based similarity matching for d, test_to_dynamo_score_list_can_omit_header(), test_to_dynamo_score_list_field_order()
 
 ### Community 27 - "Ranking and Similarity Metrics"
-Cohesion: 0.32
-Nodes (4): explain_match(), fine_similarity(), gaussian_sim(), top_shared_bins()
+Cohesion: 0.08
+Nodes (23): For /graphify add and --watch, For /graphify query, For the commit hook and native CLAUDE.md integration, For --update and --cluster-only, /graphify, Honesty Rules, Interpreter guard for subcommands, Part A - Structural extraction for code files (+15 more)
 
 ### Community 28 - "Verification Notes"
 Cohesion: 0.33
@@ -202,25 +230,89 @@ Nodes (5): _compare_results(), _float_close(), Golden output harness for Dynamo/
 Cohesion: 0.50
 Nodes (5): Histogram Construction (edge length + angle), Neighborhood Graph (k-NN), Geometry Fingerprint Document, Scale Normalization (characteristic length), Step 5: Geometry Fingerprint
 
+### Community 44 - "Community 44"
+Cohesion: 0.08
+Nodes (23): For /graphify add and --watch, For /graphify query, For the commit hook and native CLAUDE.md integration, For --update and --cluster-only, /graphify, Honesty Rules, Interpreter guard for subcommands, Part A - Structural extraction for code files (+15 more)
+
+### Community 45 - "Community 45"
+Cohesion: 0.13
+Nodes (11): _bundle(), test_find_similar_views_looks_up_scoped_candidate_preview(), test_find_similar_views_resolves_candidate_previews_after_top_n_trim(), test_index_jsonl_truncated_at_start_of_run(), test_index_views_counts_preview_failures(), test_index_views_counts_preview_failures_when_generate_returns_none(), test_index_views_second_run_hits_disk_from_doc_scoped_cache(), test_index_views_writes_doc_scoped_cache_files() (+3 more)
+
+### Community 46 - "Community 46"
+Cohesion: 0.31
+Nodes (15): _make_cache(), Tests for src/dse/cache/feature_cache.py, _sample_features(), test_clear_wipes_all_entries(), test_corrupt_cache_file_starts_fresh(), test_disk_file_is_valid_json(), test_get_miss_returns_none(), test_invalidate_nonexistent_view_is_noop() (+7 more)
+
+### Community 47 - "Community 47"
+Cohesion: 0.25
+Nodes (7): graphify reference: extra exports and benchmark, Step 6b - Wiki (only if --wiki flag), Step 7 - Neo4j export (only if --neo4j or --neo4j-push flag), Step 7b - SVG export (only if --svg flag), Step 7c - GraphML export (only if --graphml flag), Step 7d - MCP server (only if --mcp flag), Step 8 - Token reduction benchmark (only if total_words > 5000)
+
+### Community 48 - "Community 48"
+Cohesion: 0.25
+Nodes (7): graphify reference: extra exports and benchmark, Step 6b - Wiki (only if --wiki flag), Step 7 - Neo4j export (only if --neo4j or --neo4j-push flag), Step 7b - SVG export (only if --svg flag), Step 7c - GraphML export (only if --graphml flag), Step 7d - MCP server (only if --mcp flag), Step 8 - Token reduction benchmark (only if total_words > 5000)
+
+### Community 49 - "Community 49"
+Cohesion: 0.39
+Nodes (6): default_idf_for_doc_count(), bin_index(), geom_fingerprint_knn(), k_nearest_neighbors(), normalize_l1(), robust_scale()
+
+### Community 50 - "Community 50"
+Cohesion: 0.40
+Nodes (4): AGENTS.md — Revit Detail Intelligence, ChatGPT (web / API without project context), graphify — graph-first codebase navigation, Project overview
+
+### Community 51 - "Community 51"
+Cohesion: 0.50
+Nodes (3): For /graphify add, For --watch, graphify reference: add a URL and watch a folder
+
+### Community 52 - "Community 52"
+Cohesion: 0.50
+Nodes (3): For git commit hook, For native CLAUDE.md integration, graphify reference: commit hook and native CLAUDE.md integration
+
+### Community 53 - "Community 53"
+Cohesion: 0.50
+Nodes (3): For /graphify explain, For /graphify path, graphify reference: query, path, explain
+
+### Community 54 - "Community 54"
+Cohesion: 0.50
+Nodes (3): For --cluster-only, For --update (incremental re-extraction), graphify reference: incremental update and cluster-only
+
+### Community 55 - "Community 55"
+Cohesion: 0.50
+Nodes (3): For /graphify add, For --watch, graphify reference: add a URL and watch a folder
+
+### Community 56 - "Community 56"
+Cohesion: 0.50
+Nodes (3): For git commit hook, For native CLAUDE.md integration, graphify reference: commit hook and native CLAUDE.md integration
+
+### Community 57 - "Community 57"
+Cohesion: 0.50
+Nodes (3): For /graphify explain, For /graphify path, graphify reference: query, path, explain
+
+### Community 58 - "Community 58"
+Cohesion: 0.50
+Nodes (3): For --cluster-only, For --update (incremental re-extraction), graphify reference: incremental update and cluster-only
+
+### Community 59 - "Community 59"
+Cohesion: 0.50
+Nodes (3): GitHub Copilot Instructions — Revit Detail Intelligence, Graph-first codebase navigation, Project overview
+
 ## Knowledge Gaps
-- **36 isolated node(s):** `object`, `bool`, `str`, `int`, `object` (+31 more)
+- **115 isolated node(s):** `Usage`, `What graphify is for`, `Step 0 - GitHub repos and multi-path merge (only if a URL or several paths)`, `Step 1 - Ensure graphify is installed`, `Step 2 - Detect files` (+110 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **3 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **9 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `collect_token_data_for_view()` connect `Similarity Search Pipeline` to `Legacy Similarity Script`?**
-  _High betweenness centrality (0.152) - this node is a cross-community bridge._
+  _High betweenness centrality (0.109) - this node is a cross-community bridge._
 - **Why does `ViewFeatures` connect `Legacy Similarity Script` to `Symbol Cache Layer`?**
-  _High betweenness centrality (0.091) - this node is a cross-community bridge._
+  _High betweenness centrality (0.066) - this node is a cross-community bridge._
 - **Why does `type_signature()` connect `Legacy Similarity Script` to `Symbol Raster Pipeline`, `Similarity Search Pipeline`?**
-  _High betweenness centrality (0.078) - this node is a cross-community bridge._
+  _High betweenness centrality (0.056) - this node is a cross-community bridge._
 - **Are the 14 inferred relationships involving `find_similar_views()` (e.g. with `resolve_view_cache_root()` and `build_config_snapshot()`) actually correct?**
   _`find_similar_views()` has 14 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 8 inferred relationships involving `IndexDiagnosticAccumulator` (e.g. with `find_similar_views()` and `index_views()`) actually correct?**
   _`IndexDiagnosticAccumulator` has 8 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 4 inferred relationships involving `str` (e.g. with `ViewFeatureBundle` and `ViewPresentationSummary`) actually correct?**
   _`str` has 4 INFERRED edges - model-reasoned connections that need verification._
-- **What connects `Execute a GitHub GraphQL query; raise on HTTP or API errors.`, `Return the complete list of review-thread nodes for a PR, fetching     continuat`, `Return a list of PR dicts, each with unresolved review threads, merged     withi` to the rest of the system?**
-  _72 weakly-connected nodes found - possible documentation gaps or missing edges._
+- **What connects `Usage`, `What graphify is for`, `Step 0 - GitHub repos and multi-path merge (only if a URL or several paths)` to the rest of the system?**
+  _151 weakly-connected nodes found - possible documentation gaps or missing edges._

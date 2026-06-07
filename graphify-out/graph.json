@@ -1871,7 +1871,7 @@
       "file_type": "code",
       "source_file": "src/dse/cache/view_feature_cache.py",
       "source_location": "L1",
-      "community": 2,
+      "community": 1,
       "norm_label": "view_feature_cache.py",
       "id": "cache_view_feature_cache"
     },
@@ -1880,7 +1880,7 @@
       "file_type": "code",
       "source_file": "src/dse/cache/view_feature_cache.py",
       "source_location": "L19",
-      "community": 2,
+      "community": 1,
       "norm_label": "viewfeaturecacheentry",
       "id": "cache_view_feature_cache_viewfeaturecacheentry"
     },
@@ -1889,7 +1889,7 @@
       "file_type": "code",
       "source_file": "src/dse/cache/view_feature_cache.py",
       "source_location": "L32",
-      "community": 2,
+      "community": 1,
       "norm_label": ".get_if_current()",
       "id": "cache_view_feature_cache_viewfeaturecache_get_if_current"
     },
@@ -1898,7 +1898,7 @@
       "file_type": "code",
       "source_file": "src/dse/cache/view_feature_cache.py",
       "source_location": "L32",
-      "community": 2,
+      "community": 1,
       "norm_label": "int",
       "id": "src_dse_cache_view_feature_cache_py_int"
     },
@@ -1907,7 +1907,7 @@
       "file_type": "code",
       "source_file": "src/dse/cache/view_feature_cache.py",
       "source_location": "L32",
-      "community": 2,
+      "community": 1,
       "norm_label": "str",
       "id": "src_dse_cache_view_feature_cache_py_str"
     },
@@ -1916,7 +1916,7 @@
       "file_type": "code",
       "source_file": "src/dse/cache/view_feature_cache.py",
       "source_location": "L51",
-      "community": 2,
+      "community": 1,
       "norm_label": ".put()",
       "id": "cache_view_feature_cache_viewfeaturecache_put"
     },
@@ -1925,7 +1925,7 @@
       "file_type": "code",
       "source_file": "src/dse/cache/view_feature_cache.py",
       "source_location": "L55",
-      "community": 2,
+      "community": 1,
       "norm_label": "_bundle_to_dict()",
       "id": "cache_view_feature_cache_bundle_to_dict"
     },
@@ -1934,7 +1934,7 @@
       "file_type": "code",
       "source_file": "src/dse/cache/view_feature_cache.py",
       "source_location": "L55",
-      "community": 2,
+      "community": 1,
       "norm_label": "viewfeaturebundle",
       "id": "viewfeaturebundle"
     },
@@ -1943,7 +1943,7 @@
       "file_type": "code",
       "source_file": "src/dse/cache/view_feature_cache.py",
       "source_location": "L55",
-      "community": 2,
+      "community": 1,
       "norm_label": "object",
       "id": "src_dse_cache_view_feature_cache_py_object"
     },
@@ -1952,7 +1952,7 @@
       "file_type": "code",
       "source_file": "src/dse/cache/view_feature_cache.py",
       "source_location": "L63",
-      "community": 2,
+      "community": 1,
       "norm_label": "_bundle_from_dict()",
       "id": "cache_view_feature_cache_bundle_from_dict"
     },
@@ -1961,7 +1961,7 @@
       "file_type": "code",
       "source_file": "src/dse/cache/view_feature_cache.py",
       "source_location": "L71",
-      "community": 2,
+      "community": 1,
       "norm_label": "serialize_cache_entry()",
       "id": "cache_view_feature_cache_serialize_cache_entry"
     },
@@ -1970,7 +1970,7 @@
       "file_type": "code",
       "source_file": "src/dse/cache/view_feature_cache.py",
       "source_location": "L85",
-      "community": 2,
+      "community": 1,
       "norm_label": "deserialize_cache_entry()",
       "id": "cache_view_feature_cache_deserialize_cache_entry"
     },
@@ -1979,7 +1979,7 @@
       "file_type": "code",
       "source_file": "src/dse/cache/view_feature_cache.py",
       "source_location": "L96",
-      "community": 2,
+      "community": 1,
       "norm_label": "_doc_scope_from_source()",
       "id": "cache_view_feature_cache_doc_scope_from_source"
     },
@@ -1988,7 +1988,7 @@
       "file_type": "code",
       "source_file": "src/dse/cache/view_feature_cache.py",
       "source_location": "L109",
-      "community": 2,
+      "community": 1,
       "norm_label": "_doc_scope_from_bundle()",
       "id": "cache_view_feature_cache_doc_scope_from_bundle"
     },
@@ -1997,7 +1997,7 @@
       "file_type": "code",
       "source_file": "src/dse/cache/view_feature_cache.py",
       "source_location": "L117",
-      "community": 2,
+      "community": 1,
       "norm_label": "cache_file_for_view()",
       "id": "cache_view_feature_cache_cache_file_for_view"
     },
@@ -2006,7 +2006,7 @@
       "file_type": "code",
       "source_file": "src/dse/cache/view_feature_cache.py",
       "source_location": "L129",
-      "community": 2,
+      "community": 1,
       "norm_label": "read_cache_record()",
       "id": "cache_view_feature_cache_read_cache_record"
     },
@@ -2015,7 +2015,7 @@
       "file_type": "code",
       "source_file": "src/dse/cache/view_feature_cache.py",
       "source_location": "L155",
-      "community": 2,
+      "community": 1,
       "norm_label": "write_cache_record()",
       "id": "cache_view_feature_cache_write_cache_record"
     },
@@ -2024,7 +2024,7 @@
       "file_type": "code",
       "source_file": "src/dse/cache/view_feature_cache.py",
       "source_location": "L164",
-      "community": 2,
+      "community": 1,
       "norm_label": "invalidate_cache_record()",
       "id": "cache_view_feature_cache_invalidate_cache_record"
     },
@@ -2033,7 +2033,7 @@
       "file_type": "code",
       "source_file": "src/dse/cache/view_feature_cache.py",
       "source_location": "L164",
-      "community": 2,
+      "community": 1,
       "norm_label": "bool",
       "id": "src_dse_cache_view_feature_cache_py_bool"
     },
@@ -2042,7 +2042,7 @@
       "file_type": "code",
       "source_file": "src/dse/cache/view_feature_cache.py",
       "source_location": "L180",
-      "community": 2,
+      "community": 1,
       "norm_label": "get_cached_bundle_with_diagnostics()",
       "id": "cache_view_feature_cache_get_cached_bundle_with_diagnostics"
     },
@@ -2051,7 +2051,7 @@
       "file_type": "code",
       "source_file": "src/dse/cache/view_feature_cache.py",
       "source_location": "L211",
-      "community": 2,
+      "community": 1,
       "norm_label": "put_bundle_in_caches()",
       "id": "cache_view_feature_cache_put_bundle_in_caches"
     },
@@ -2564,7 +2564,7 @@
       "file_type": "code",
       "source_file": "src/dse/models.py",
       "source_location": "L1",
-      "community": 2,
+      "community": 1,
       "norm_label": "models.py",
       "id": "dse_models"
     },
@@ -2582,7 +2582,7 @@
       "file_type": "code",
       "source_file": "src/dse/models.py",
       "source_location": "L16",
-      "community": 2,
+      "community": 1,
       "norm_label": "viewstatesignature",
       "id": "dse_models_viewstatesignature"
     },
@@ -2591,7 +2591,7 @@
       "file_type": "code",
       "source_file": "src/dse/models.py",
       "source_location": "L35",
-      "community": 2,
+      "community": 1,
       "norm_label": "viewsearchfeatures",
       "id": "dse_models_viewsearchfeatures"
     },
@@ -2600,7 +2600,7 @@
       "file_type": "code",
       "source_file": "src/dse/models.py",
       "source_location": "L56",
-      "community": 2,
+      "community": 1,
       "norm_label": "viewpresentationsummary",
       "id": "dse_models_viewpresentationsummary"
     },
@@ -2609,7 +2609,7 @@
       "file_type": "code",
       "source_file": "src/dse/models.py",
       "source_location": "L71",
-      "community": 2,
+      "community": 1,
       "norm_label": "viewfeaturebundle",
       "id": "dse_models_viewfeaturebundle"
     },
@@ -2627,7 +2627,7 @@
       "file_type": "rationale",
       "source_file": "src/dse/models.py",
       "source_location": "L17",
-      "community": 2,
+      "community": 1,
       "norm_label": "deterministic extraction-state signature used for cache invalidation.",
       "id": "dse_models_rationale_17"
     },
@@ -2636,7 +2636,7 @@
       "file_type": "rationale",
       "source_file": "src/dse/models.py",
       "source_location": "L36",
-      "community": 2,
+      "community": 1,
       "norm_label": "richer persisted stage-1 feature set for retrieval/candidate generation.",
       "id": "dse_models_rationale_36"
     },
@@ -2645,7 +2645,7 @@
       "file_type": "rationale",
       "source_file": "src/dse/models.py",
       "source_location": "L57",
-      "community": 2,
+      "community": 1,
       "norm_label": "lightweight view summary for future review/contact-sheet outputs.",
       "id": "dse_models_rationale_57"
     },
@@ -2654,7 +2654,7 @@
       "file_type": "rationale",
       "source_file": "src/dse/models.py",
       "source_location": "L72",
-      "community": 2,
+      "community": 1,
       "norm_label": "container record for extraction output and cache payloads.",
       "id": "dse_models_rationale_72"
     },
@@ -3874,6 +3874,15 @@
       "id": "revit_api_preview_export_rationale_100"
     },
     {
+      "label": "symbol_raster.py",
+      "file_type": "code",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L1",
+      "community": 3,
+      "norm_label": "symbol_raster.py",
+      "id": "revit_api_symbol_raster"
+    },
+    {
       "label": "_emit_lookup_diagnostic()",
       "file_type": "code",
       "source_file": "src/dse/revit_api/symbol_raster.py",
@@ -4499,7 +4508,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L1",
-      "community": 1,
+      "community": 2,
       "norm_label": "dynamo_view_similarity_legacy.py",
       "id": "harness_dynamo_view_similarity_legacy"
     },
@@ -4508,7 +4517,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L73",
-      "community": 1,
+      "community": 2,
       "norm_label": "viewfeatures",
       "id": "harness_dynamo_view_similarity_legacy_viewfeatures"
     },
@@ -4517,7 +4526,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L74",
-      "community": 1,
+      "community": 2,
       "norm_label": ".__init__()",
       "id": "harness_dynamo_view_similarity_legacy_viewfeatures_init"
     },
@@ -4526,7 +4535,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L83",
-      "community": 1,
+      "community": 2,
       "norm_label": "_current_doc()",
       "id": "harness_dynamo_view_similarity_legacy_current_doc"
     },
@@ -4535,7 +4544,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L92",
-      "community": 1,
+      "community": 2,
       "norm_label": "_first_item()",
       "id": "harness_dynamo_view_similarity_legacy_first_item"
     },
@@ -4544,7 +4553,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L100",
-      "community": 1,
+      "community": 2,
       "norm_label": "_unwrap_dynamo_element()",
       "id": "harness_dynamo_view_similarity_legacy_unwrap_dynamo_element"
     },
@@ -4553,7 +4562,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L110",
-      "community": 1,
+      "community": 2,
       "norm_label": "_coerce_view()",
       "id": "harness_dynamo_view_similarity_legacy_coerce_view"
     },
@@ -4562,7 +4571,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L132",
-      "community": 1,
+      "community": 2,
       "norm_label": "_coerce_views()",
       "id": "harness_dynamo_view_similarity_legacy_coerce_views"
     },
@@ -4571,7 +4580,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L144",
-      "community": 1,
+      "community": 2,
       "norm_label": "_safe_name()",
       "id": "harness_dynamo_view_similarity_legacy_safe_name"
     },
@@ -4580,7 +4589,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L151",
-      "community": 1,
+      "community": 2,
       "norm_label": "_safe_type_name()",
       "id": "harness_dynamo_view_similarity_legacy_safe_type_name"
     },
@@ -4589,7 +4598,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L156",
-      "community": 1,
+      "community": 2,
       "norm_label": "_class_name()",
       "id": "harness_dynamo_view_similarity_legacy_class_name"
     },
@@ -4598,7 +4607,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L163",
-      "community": 1,
+      "community": 2,
       "norm_label": "_increment()",
       "id": "harness_dynamo_view_similarity_legacy_increment"
     },
@@ -4607,7 +4616,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L167",
-      "community": 1,
+      "community": 2,
       "norm_label": "_category_name()",
       "id": "harness_dynamo_view_similarity_legacy_category_name"
     },
@@ -4616,7 +4625,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L171",
-      "community": 1,
+      "community": 2,
       "norm_label": "_is_annotation_like()",
       "id": "harness_dynamo_view_similarity_legacy_is_annotation_like"
     },
@@ -4625,7 +4634,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L181",
-      "community": 1,
+      "community": 2,
       "norm_label": "_collect_curves_from_geometry()",
       "id": "harness_dynamo_view_similarity_legacy_collect_curves_from_geometry"
     },
@@ -4634,7 +4643,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L211",
-      "community": 1,
+      "community": 2,
       "norm_label": "_element_geometry_curves()",
       "id": "harness_dynamo_view_similarity_legacy_element_geometry_curves"
     },
@@ -4643,7 +4652,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L245",
-      "community": 1,
+      "community": 2,
       "norm_label": "_geometry_summary_for_element()",
       "id": "harness_dynamo_view_similarity_legacy_geometry_summary_for_element"
     },
@@ -4652,7 +4661,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L256",
-      "community": 1,
+      "community": 2,
       "norm_label": "token_assignment_policy()",
       "id": "harness_dynamo_view_similarity_legacy_token_assignment_policy"
     },
@@ -4661,7 +4670,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L275",
-      "community": 1,
+      "community": 2,
       "norm_label": "is_valid_token_value()",
       "id": "harness_dynamo_view_similarity_legacy_is_valid_token_value"
     },
@@ -4670,7 +4679,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L284",
-      "community": 1,
+      "community": 2,
       "norm_label": "_signature_parts_are_valid()",
       "id": "harness_dynamo_view_similarity_legacy_signature_parts_are_valid"
     },
@@ -4679,7 +4688,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L291",
-      "community": 1,
+      "community": 2,
       "norm_label": "_token_weight()",
       "id": "harness_dynamo_view_similarity_legacy_token_weight"
     },
@@ -4688,7 +4697,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L295",
-      "community": 1,
+      "community": 2,
       "norm_label": "_add_token()",
       "id": "harness_dynamo_view_similarity_legacy_add_token"
     },
@@ -4697,7 +4706,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L299",
-      "community": 1,
+      "community": 2,
       "norm_label": "_emit_token()",
       "id": "harness_dynamo_view_similarity_legacy_emit_token"
     },
@@ -4706,7 +4715,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L310",
-      "community": 1,
+      "community": 2,
       "norm_label": "_category_type_label()",
       "id": "harness_dynamo_view_similarity_legacy_category_type_label"
     },
@@ -4715,7 +4724,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L334",
-      "community": 1,
+      "community": 2,
       "norm_label": "classify_view_kind()",
       "id": "harness_dynamo_view_similarity_legacy_classify_view_kind"
     },
@@ -4724,7 +4733,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L343",
-      "community": 1,
+      "community": 2,
       "norm_label": "get_view_elements()",
       "id": "harness_dynamo_view_similarity_legacy_get_view_elements"
     },
@@ -4733,7 +4742,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L352",
-      "community": 1,
+      "community": 2,
       "norm_label": "get_model_elements_contributing_to_view()",
       "id": "harness_dynamo_view_similarity_legacy_get_model_elements_contributing_to_view"
     },
@@ -4742,7 +4751,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L363",
-      "community": 1,
+      "community": 2,
       "norm_label": "get_annotation_elements()",
       "id": "harness_dynamo_view_similarity_legacy_get_annotation_elements"
     },
@@ -4751,7 +4760,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L374",
-      "community": 1,
+      "community": 2,
       "norm_label": "_resolve_type_name()",
       "id": "harness_dynamo_view_similarity_legacy_resolve_type_name"
     },
@@ -4760,7 +4769,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L408",
-      "community": 1,
+      "community": 2,
       "norm_label": "type_signature()",
       "id": "harness_dynamo_view_similarity_legacy_type_signature"
     },
@@ -4769,7 +4778,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L417",
-      "community": 1,
+      "community": 2,
       "norm_label": "family_type_sig()",
       "id": "harness_dynamo_view_similarity_legacy_family_type_sig"
     },
@@ -4778,7 +4787,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L421",
-      "community": 1,
+      "community": 2,
       "norm_label": "get_2d_curves_in_view()",
       "id": "harness_dynamo_view_similarity_legacy_get_2d_curves_in_view"
     },
@@ -4787,7 +4796,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L464",
-      "community": 1,
+      "community": 2,
       "norm_label": "endpoints_from_curves()",
       "id": "harness_dynamo_view_similarity_legacy_endpoints_from_curves"
     },
@@ -4796,7 +4805,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L475",
-      "community": 1,
+      "community": 2,
       "norm_label": "dedupe_points_by_grid()",
       "id": "harness_dynamo_view_similarity_legacy_dedupe_points_by_grid"
     },
@@ -4805,7 +4814,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L487",
-      "community": 1,
+      "community": 2,
       "norm_label": "to_view_local_2d()",
       "id": "harness_dynamo_view_similarity_legacy_to_view_local_2d"
     },
@@ -4814,7 +4823,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L502",
-      "community": 1,
+      "community": 2,
       "norm_label": "_bbox()",
       "id": "harness_dynamo_view_similarity_legacy_bbox"
     },
@@ -4823,7 +4832,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L510",
-      "community": 1,
+      "community": 2,
       "norm_label": "bbox_diagonal()",
       "id": "harness_dynamo_view_similarity_legacy_bbox_diagonal"
     },
@@ -4832,7 +4841,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L515",
-      "community": 1,
+      "community": 2,
       "norm_label": "k_nearest_neighbors()",
       "id": "harness_dynamo_view_similarity_legacy_k_nearest_neighbors"
     },
@@ -4841,7 +4850,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L527",
-      "community": 1,
+      "community": 2,
       "norm_label": "robust_scale()",
       "id": "harness_dynamo_view_similarity_legacy_robust_scale"
     },
@@ -4850,7 +4859,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L543",
-      "community": 1,
+      "community": 2,
       "norm_label": "bin_index()",
       "id": "harness_dynamo_view_similarity_legacy_bin_index"
     },
@@ -4859,7 +4868,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L550",
-      "community": 1,
+      "community": 2,
       "norm_label": "normalize_l1()",
       "id": "harness_dynamo_view_similarity_legacy_normalize_l1"
     },
@@ -4868,7 +4877,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L557",
-      "community": 1,
+      "community": 2,
       "norm_label": "geom_fingerprint_knn()",
       "id": "harness_dynamo_view_similarity_legacy_geom_fingerprint_knn"
     },
@@ -4877,7 +4886,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L583",
-      "community": 1,
+      "community": 2,
       "norm_label": "bbox_aspect_ratio()",
       "id": "harness_dynamo_view_similarity_legacy_bbox_aspect_ratio"
     },
@@ -4886,7 +4895,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L590",
-      "community": 1,
+      "community": 2,
       "norm_label": "linework_density()",
       "id": "harness_dynamo_view_similarity_legacy_linework_density"
     },
@@ -4895,7 +4904,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L601",
-      "community": 1,
+      "community": 2,
       "norm_label": "cosine_similarity()",
       "id": "harness_dynamo_view_similarity_legacy_cosine_similarity"
     },
@@ -4904,7 +4913,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L612",
-      "community": 1,
+      "community": 2,
       "norm_label": "gaussian_sim()",
       "id": "harness_dynamo_view_similarity_legacy_gaussian_sim"
     },
@@ -4913,7 +4922,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L619",
-      "community": 1,
+      "community": 2,
       "norm_label": "build_token_df()",
       "id": "harness_dynamo_view_similarity_legacy_build_token_df"
     },
@@ -4922,7 +4931,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L629",
-      "community": 1,
+      "community": 2,
       "norm_label": "_build_token_idf()",
       "id": "harness_dynamo_view_similarity_legacy_build_token_idf"
     },
@@ -4931,7 +4940,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L639",
-      "community": 1,
+      "community": 2,
       "norm_label": "token_similarity()",
       "id": "harness_dynamo_view_similarity_legacy_token_similarity"
     },
@@ -4940,7 +4949,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L657",
-      "community": 1,
+      "community": 2,
       "norm_label": "_effective_weights()",
       "id": "harness_dynamo_view_similarity_legacy_effective_weights"
     },
@@ -4949,7 +4958,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L664",
-      "community": 1,
+      "community": 2,
       "norm_label": "fine_similarity()",
       "id": "harness_dynamo_view_similarity_legacy_fine_similarity"
     },
@@ -4958,7 +4967,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L672",
-      "community": 1,
+      "community": 2,
       "norm_label": "confidence_tier()",
       "id": "harness_dynamo_view_similarity_legacy_confidence_tier"
     },
@@ -4967,7 +4976,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L680",
-      "community": 1,
+      "community": 2,
       "norm_label": "top_shared_bins()",
       "id": "harness_dynamo_view_similarity_legacy_top_shared_bins"
     },
@@ -4976,7 +4985,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L686",
-      "community": 1,
+      "community": 2,
       "norm_label": "explain_match()",
       "id": "harness_dynamo_view_similarity_legacy_explain_match"
     },
@@ -4985,7 +4994,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L696",
-      "community": 1,
+      "community": 2,
       "norm_label": "_element_base_info()",
       "id": "harness_dynamo_view_similarity_legacy_element_base_info"
     },
@@ -4994,7 +5003,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L704",
-      "community": 1,
+      "community": 2,
       "norm_label": "_collect_token_data_for_view()",
       "id": "harness_dynamo_view_similarity_legacy_collect_token_data_for_view"
     },
@@ -5003,7 +5012,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L814",
-      "community": 1,
+      "community": 2,
       "norm_label": "extract_features()",
       "id": "harness_dynamo_view_similarity_legacy_extract_features"
     },
@@ -5012,7 +5021,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L849",
-      "community": 1,
+      "community": 2,
       "norm_label": "find_similar_views()",
       "id": "harness_dynamo_view_similarity_legacy_find_similar_views"
     },
@@ -5021,7 +5030,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L883",
-      "community": 1,
+      "community": 2,
       "norm_label": "_view_label()",
       "id": "harness_dynamo_view_similarity_legacy_view_label"
     },
@@ -5030,7 +5039,7 @@
       "file_type": "code",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L890",
-      "community": 1,
+      "community": 2,
       "norm_label": "sample_view_fingerprints()",
       "id": "harness_dynamo_view_similarity_legacy_sample_view_fingerprints"
     },
@@ -5039,7 +5048,7 @@
       "file_type": "rationale",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L1",
-      "community": 1,
+      "community": 2,
       "norm_label": "dynamo (cpython3) script for revit 2025. feature-based similarity matching for d",
       "id": "harness_dynamo_view_similarity_legacy_rationale_1"
     },
@@ -5048,7 +5057,7 @@
       "file_type": "rationale",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L111",
-      "community": 1,
+      "community": 2,
       "norm_label": "accept view, wrapped dynamo view, elementid, int, or single-item list of those.",
       "id": "harness_dynamo_view_similarity_legacy_rationale_111"
     },
@@ -5057,7 +5066,7 @@
       "file_type": "rationale",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L311",
-      "community": 1,
+      "community": 2,
       "norm_label": "return a stable category type label across revit python hosts.",
       "id": "harness_dynamo_view_similarity_legacy_rationale_311"
     },
@@ -5066,7 +5075,7 @@
       "file_type": "rationale",
       "source_file": "tests/harness/dynamo_view_similarity_legacy.py",
       "source_location": "L891",
-      "community": 1,
+      "community": 2,
       "norm_label": "sample a deterministic random subset of views and report each view fingerprint.",
       "id": "harness_dynamo_view_similarity_legacy_rationale_891"
     },
@@ -5129,7 +5138,7 @@
       "file_type": "code",
       "source_file": "tests/test_disk_cache_and_outputs_v031.py",
       "source_location": "L1",
-      "community": 2,
+      "community": 1,
       "norm_label": "test_disk_cache_and_outputs_v031.py",
       "id": "tests_test_disk_cache_and_outputs_v031"
     },
@@ -5138,7 +5147,7 @@
       "file_type": "code",
       "source_file": "tests/test_disk_cache_and_outputs_v031.py",
       "source_location": "L19",
-      "community": 6,
+      "community": 1,
       "norm_label": "_write_tiny_png()",
       "id": "tests_test_disk_cache_and_outputs_v031_write_tiny_png"
     },
@@ -5147,7 +5156,7 @@
       "file_type": "code",
       "source_file": "tests/test_disk_cache_and_outputs_v031.py",
       "source_location": "L23",
-      "community": 2,
+      "community": 1,
       "norm_label": "_bundle()",
       "id": "tests_test_disk_cache_and_outputs_v031_bundle"
     },
@@ -5156,7 +5165,7 @@
       "file_type": "code",
       "source_file": "tests/test_disk_cache_and_outputs_v031.py",
       "source_location": "L48",
-      "community": 2,
+      "community": 1,
       "norm_label": "test_disk_cache_roundtrip_and_invalidation()",
       "id": "tests_test_disk_cache_and_outputs_v031_test_disk_cache_roundtrip_and_invalidation"
     },
@@ -5165,7 +5174,7 @@
       "file_type": "code",
       "source_file": "tests/test_disk_cache_and_outputs_v031.py",
       "source_location": "L87",
-      "community": 2,
+      "community": 1,
       "norm_label": "test_read_cache_record_finds_doc_scoped_file()",
       "id": "tests_test_disk_cache_and_outputs_v031_test_read_cache_record_finds_doc_scoped_file"
     },
@@ -5174,7 +5183,7 @@
       "file_type": "code",
       "source_file": "tests/test_disk_cache_and_outputs_v031.py",
       "source_location": "L107",
-      "community": 2,
+      "community": 1,
       "norm_label": "test_cache_roundtrip_via_doc_scoped_file()",
       "id": "tests_test_disk_cache_and_outputs_v031_test_cache_roundtrip_via_doc_scoped_file"
     },
@@ -5183,7 +5192,7 @@
       "file_type": "code",
       "source_file": "tests/test_disk_cache_and_outputs_v031.py",
       "source_location": "L140",
-      "community": 2,
+      "community": 1,
       "norm_label": "test_legacy_path_fallback_still_readable()",
       "id": "tests_test_disk_cache_and_outputs_v031_test_legacy_path_fallback_still_readable"
     },
@@ -5192,7 +5201,7 @@
       "file_type": "code",
       "source_file": "tests/test_disk_cache_and_outputs_v031.py",
       "source_location": "L160",
-      "community": 2,
+      "community": 1,
       "norm_label": "test_get_cached_bundle_selects_matching_doc_scope_without_cross_invalidation()",
       "id": "tests_test_disk_cache_and_outputs_v031_test_get_cached_bundle_selects_matching_doc_scope_without_cross_invalidation"
     },
@@ -5210,7 +5219,7 @@
       "file_type": "code",
       "source_file": "tests/test_disk_cache_and_outputs_v031.py",
       "source_location": "L244",
-      "community": 6,
+      "community": 1,
       "norm_label": "test_contact_folder_and_runs_index_emission()",
       "id": "tests_test_disk_cache_and_outputs_v031_test_contact_folder_and_runs_index_emission"
     },
@@ -5219,7 +5228,7 @@
       "file_type": "code",
       "source_file": "tests/test_disk_cache_and_outputs_v031.py",
       "source_location": "L283",
-      "community": 6,
+      "community": 1,
       "norm_label": "test_contact_folder_uses_preview_cache_fallback()",
       "id": "tests_test_disk_cache_and_outputs_v031_test_contact_folder_uses_preview_cache_fallback"
     },
@@ -5507,7 +5516,7 @@
       "file_type": "code",
       "source_file": "tests/test_search_index_and_cache_loading.py",
       "source_location": "L1",
-      "community": 2,
+      "community": 1,
       "norm_label": "test_search_index_and_cache_loading.py",
       "id": "tests_test_search_index_and_cache_loading"
     },
@@ -5516,7 +5525,7 @@
       "file_type": "code",
       "source_file": "tests/test_search_index_and_cache_loading.py",
       "source_location": "L11",
-      "community": 2,
+      "community": 1,
       "norm_label": "_install_revit_stubs()",
       "id": "tests_test_search_index_and_cache_loading_install_revit_stubs"
     },
@@ -5525,7 +5534,7 @@
       "file_type": "code",
       "source_file": "tests/test_search_index_and_cache_loading.py",
       "source_location": "L53",
-      "community": 2,
+      "community": 1,
       "norm_label": "_bundle()",
       "id": "tests_test_search_index_and_cache_loading_bundle"
     },
@@ -5534,7 +5543,7 @@
       "file_type": "code",
       "source_file": "tests/test_search_index_and_cache_loading.py",
       "source_location": "L79",
-      "community": 2,
+      "community": 1,
       "norm_label": "test_index_views_empty_input()",
       "id": "tests_test_search_index_and_cache_loading_test_index_views_empty_input"
     },
@@ -5543,7 +5552,7 @@
       "file_type": "code",
       "source_file": "tests/test_search_index_and_cache_loading.py",
       "source_location": "L88",
-      "community": 2,
+      "community": 1,
       "norm_label": "test_index_views_all_invalid()",
       "id": "tests_test_search_index_and_cache_loading_test_index_views_all_invalid"
     },
@@ -5552,7 +5561,7 @@
       "file_type": "code",
       "source_file": "tests/test_search_index_and_cache_loading.py",
       "source_location": "L97",
-      "community": 2,
+      "community": 1,
       "norm_label": "test_index_views_mixed_cache_hit_and_miss()",
       "id": "tests_test_search_index_and_cache_loading_test_index_views_mixed_cache_hit_and_miss"
     },
@@ -5561,7 +5570,7 @@
       "file_type": "code",
       "source_file": "tests/test_search_index_and_cache_loading.py",
       "source_location": "L123",
-      "community": 2,
+      "community": 1,
       "norm_label": "test_sidecar_not_rewritten_on_hit_disk()",
       "id": "tests_test_search_index_and_cache_loading_test_sidecar_not_rewritten_on_hit_disk"
     },
@@ -5570,7 +5579,7 @@
       "file_type": "code",
       "source_file": "tests/test_search_index_and_cache_loading.py",
       "source_location": "L149",
-      "community": 2,
+      "community": 1,
       "norm_label": "test_sidecar_written_on_rebuilt()",
       "id": "tests_test_search_index_and_cache_loading_test_sidecar_written_on_rebuilt"
     },
@@ -5579,7 +5588,7 @@
       "file_type": "code",
       "source_file": "tests/test_search_index_and_cache_loading.py",
       "source_location": "L182",
-      "community": 2,
+      "community": 1,
       "norm_label": "test_index_jsonl_truncated_at_start_of_run()",
       "id": "tests_test_search_index_and_cache_loading_test_index_jsonl_truncated_at_start_of_run"
     },
@@ -5588,7 +5597,7 @@
       "file_type": "code",
       "source_file": "tests/test_search_index_and_cache_loading.py",
       "source_location": "L221",
-      "community": 2,
+      "community": 1,
       "norm_label": "test_index_views_writes_doc_scoped_cache_files()",
       "id": "tests_test_search_index_and_cache_loading_test_index_views_writes_doc_scoped_cache_files"
     },
@@ -5597,7 +5606,7 @@
       "file_type": "code",
       "source_file": "tests/test_search_index_and_cache_loading.py",
       "source_location": "L251",
-      "community": 2,
+      "community": 1,
       "norm_label": "test_index_views_counts_preview_failures()",
       "id": "tests_test_search_index_and_cache_loading_test_index_views_counts_preview_failures"
     },
@@ -5606,7 +5615,7 @@
       "file_type": "code",
       "source_file": "tests/test_search_index_and_cache_loading.py",
       "source_location": "L280",
-      "community": 2,
+      "community": 1,
       "norm_label": "test_index_views_counts_preview_failures_when_generate_returns_none()",
       "id": "tests_test_search_index_and_cache_loading_test_index_views_counts_preview_failures_when_generate_returns_none"
     },
@@ -5615,7 +5624,7 @@
       "file_type": "code",
       "source_file": "tests/test_search_index_and_cache_loading.py",
       "source_location": "L306",
-      "community": 2,
+      "community": 1,
       "norm_label": "test_build_state_context_passes_collected_elements_to_symbol_raster()",
       "id": "tests_test_search_index_and_cache_loading_test_build_state_context_passes_collected_elements_to_symbol_raster"
     },
@@ -5624,7 +5633,7 @@
       "file_type": "code",
       "source_file": "tests/test_search_index_and_cache_loading.py",
       "source_location": "L358",
-      "community": 2,
+      "community": 1,
       "norm_label": "test_index_views_jsonl_includes_per_view_symbol_perf_and_cache_temperature()",
       "id": "tests_test_search_index_and_cache_loading_test_index_views_jsonl_includes_per_view_symbol_perf_and_cache_temperature"
     },
@@ -5633,7 +5642,7 @@
       "file_type": "code",
       "source_file": "tests/test_search_index_and_cache_loading.py",
       "source_location": "L442",
-      "community": 2,
+      "community": 1,
       "norm_label": "test_extract_bundle_for_index_delegates_without_compat_shim()",
       "id": "tests_test_search_index_and_cache_loading_test_extract_bundle_for_index_delegates_without_compat_shim"
     },
@@ -5642,7 +5651,7 @@
       "file_type": "code",
       "source_file": "tests/test_search_index_and_cache_loading.py",
       "source_location": "L471",
-      "community": 2,
+      "community": 1,
       "norm_label": "test_index_views_writes_doc_scoped_cache_without_legacy_entry()",
       "id": "tests_test_search_index_and_cache_loading_test_index_views_writes_doc_scoped_cache_without_legacy_entry"
     },
@@ -5651,7 +5660,7 @@
       "file_type": "code",
       "source_file": "tests/test_search_index_and_cache_loading.py",
       "source_location": "L496",
-      "community": 2,
+      "community": 1,
       "norm_label": "test_index_views_second_run_hits_disk_from_doc_scoped_cache()",
       "id": "tests_test_search_index_and_cache_loading_test_index_views_second_run_hits_disk_from_doc_scoped_cache"
     },
@@ -5660,7 +5669,7 @@
       "file_type": "code",
       "source_file": "tests/test_search_index_and_cache_loading.py",
       "source_location": "L521",
-      "community": 2,
+      "community": 1,
       "norm_label": "test_load_all_cached_bundles_empty_dir()",
       "id": "tests_test_search_index_and_cache_loading_test_load_all_cached_bundles_empty_dir"
     },
@@ -5669,7 +5678,7 @@
       "file_type": "code",
       "source_file": "tests/test_search_index_and_cache_loading.py",
       "source_location": "L527",
-      "community": 2,
+      "community": 1,
       "norm_label": "test_load_all_cached_bundles_skips_corrupt_and_returns_valid()",
       "id": "tests_test_search_index_and_cache_loading_test_load_all_cached_bundles_skips_corrupt_and_returns_valid"
     },
@@ -5678,7 +5687,7 @@
       "file_type": "code",
       "source_file": "tests/test_search_index_and_cache_loading.py",
       "source_location": "L570",
-      "community": 2,
+      "community": 1,
       "norm_label": "test_load_all_cached_bundles_includes_doc_scoped_view_id_collisions()",
       "id": "tests_test_search_index_and_cache_loading_test_load_all_cached_bundles_includes_doc_scoped_view_id_collisions"
     },
@@ -5687,7 +5696,7 @@
       "file_type": "code",
       "source_file": "tests/test_search_index_and_cache_loading.py",
       "source_location": "L609",
-      "community": 2,
+      "community": 1,
       "norm_label": "test_find_similar_views_looks_up_scoped_candidate_preview()",
       "id": "tests_test_search_index_and_cache_loading_test_find_similar_views_looks_up_scoped_candidate_preview"
     },
@@ -5696,7 +5705,7 @@
       "file_type": "code",
       "source_file": "tests/test_search_index_and_cache_loading.py",
       "source_location": "L641",
-      "community": 2,
+      "community": 1,
       "norm_label": "test_find_similar_views_resolves_candidate_previews_after_top_n_trim()",
       "id": "tests_test_search_index_and_cache_loading_test_find_similar_views_resolves_candidate_previews_after_top_n_trim"
     },
@@ -6263,7 +6272,7 @@
       "file_type": "code",
       "source_file": "tests/test_view_feature_cache_v03.py",
       "source_location": "L1",
-      "community": 2,
+      "community": 1,
       "norm_label": "test_view_feature_cache_v03.py",
       "id": "tests_test_view_feature_cache_v03"
     },
@@ -6272,7 +6281,7 @@
       "file_type": "code",
       "source_file": "tests/test_view_feature_cache_v03.py",
       "source_location": "L11",
-      "community": 2,
+      "community": 1,
       "norm_label": "_bundle()",
       "id": "tests_test_view_feature_cache_v03_bundle"
     },
@@ -6281,7 +6290,7 @@
       "file_type": "code",
       "source_file": "tests/test_view_feature_cache_v03.py",
       "source_location": "L33",
-      "community": 2,
+      "community": 1,
       "norm_label": "test_cache_requires_state_hash_pipeline_and_schema_match()",
       "id": "tests_test_view_feature_cache_v03_test_cache_requires_state_hash_pipeline_and_schema_match"
     },
@@ -6290,7 +6299,7 @@
       "file_type": "code",
       "source_file": "tests/test_view_feature_cache_v03.py",
       "source_location": "L76",
-      "community": 2,
+      "community": 1,
       "norm_label": "test_legacy_adapter_merges_stable_and_context_tokens()",
       "id": "tests_test_view_feature_cache_v03_test_legacy_adapter_merges_stable_and_context_tokens"
     },
@@ -7413,7 +7422,20 @@
       "norm_label": "find_similar_views"
     },
     {
-      "label": "symbol_raster",
+      "label": "search",
+      "file_type": "code",
+      "source_file": "src/dse/pipelines/search.py",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "agents_search",
+      "community": 0,
+      "norm_label": "search"
+    },
+    {
+      "label": "symbol_raster_pipeline",
       "file_type": "code",
       "source_file": "src/revit_api/symbol_raster.py",
       "source_location": null,
@@ -7421,9 +7443,9 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "id": "agents_symbol_raster",
-      "community": 3,
-      "norm_label": "symbol_raster"
+      "id": "agents_symbol_raster_pipeline",
+      "community": 0,
+      "norm_label": "symbol_raster_pipeline"
     }
   ],
   "links": [
@@ -10524,16 +10546,6 @@
       "target": "cache_view_feature_cache"
     },
     {
-      "relation": "calls",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "source_file": "src/revit_api/symbol_raster.py",
-      "source_location": null,
-      "weight": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "cache_view_feature_cache"
-    },
-    {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "src/dse/cache/view_feature_cache.py",
@@ -12955,17 +12967,6 @@
       "target": "features_idf_build_token_idf"
     },
     {
-      "relation": "imports_from",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L15",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "dse_io_paths"
-    },
-    {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "src/dse/io_paths.py",
@@ -13088,6 +13089,17 @@
       "weight": 1.0,
       "confidence_score": 1.0,
       "source": "revit_api_preview_export",
+      "target": "dse_io_paths"
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L15",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
       "target": "dse_io_paths"
     },
     {
@@ -16671,11 +16683,471 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L611",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_actual_instance_length_ft"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L954",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_apply_canonical_instance_transform"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L624",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_build_symbol_instance_context"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L192",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_cache_file_path"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L226",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_cache_lookup_diag_payload"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L1160",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_cleanup_export_tmp_dir"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L685",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_collect_canonical_points_for_context"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L1485",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_collect_points_for_element"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L1509",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_collect_raster_points_for_view"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L461",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_component_angular_subsample"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L1325",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_create_fresh_view_with_symbol"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L1468",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_delete_temp_view"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L146",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_document_cache_key"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L128",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_document_identity"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L160",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_document_lookup_debug_snapshot"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L450",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_edge_pixels"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
       "source_location": "L28",
       "weight": 1.0,
       "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
+      "source": "revit_api_symbol_raster",
       "target": "revit_api_symbol_raster_emit_lookup_diagnostic"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L995",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_export_pixel_size_from_obb_paper_inches"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L1016",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_export_temp_view_png"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L100",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_extract_type_id_int"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L41",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_flush_diag_json_buffer"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L431",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_foreground_edge_pixels"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L1200",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_get_drafting_view_family_type_id"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L481",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_hough_endpoints"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L155",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_increment_doc_lookup_stat"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L594",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_instance_pose_in_view_2d"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L117",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_is_line_based_family_instance"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L250",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_is_numeric"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L254",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_is_points_payload_valid"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L45",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_memory_cache_get"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L55",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_memory_cache_set"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L980",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_obb_paper_inches"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L364",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_png_to_luminance"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L320",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_png_unfilter"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L213",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_read_cache_entry"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L206",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_retain_debug_artifacts_enabled"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L199",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_retained_png_path"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L68",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_safe_int_element_id"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L87",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_safe_type_sig_parts"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L81",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_sanitize_path_component"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L1182",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_scoped_transaction"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L1171",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_start_transaction"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L1232",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_suppress_filled_region_patterns"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L165",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_symbol_cache_key"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L265",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_validate_cache_entry"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L307",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_write_cache_entry"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "src/dse/revit_api/symbol_raster.py",
+      "source_location": "L37",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "revit_api_symbol_raster",
+      "target": "revit_api_symbol_raster_write_diag_json"
     },
     {
       "relation": "calls",
@@ -16687,16 +17159,6 @@
       "confidence_score": 1.0,
       "source": "revit_api_symbol_raster_collect_canonical_points_for_context",
       "target": "revit_api_symbol_raster_emit_lookup_diagnostic"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L37",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_write_diag_json"
     },
     {
       "relation": "calls",
@@ -16721,26 +17183,6 @@
       "target": "revit_api_symbol_raster_write_diag_json"
     },
     {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L41",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_flush_diag_json_buffer"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L45",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_memory_cache_get"
-    },
-    {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
@@ -16750,16 +17192,6 @@
       "confidence_score": 1.0,
       "source": "revit_api_symbol_raster_collect_canonical_points_for_context",
       "target": "revit_api_symbol_raster_memory_cache_get"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L55",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_memory_cache_set"
     },
     {
       "relation": "calls",
@@ -16782,16 +17214,6 @@
       "confidence_score": 1.0,
       "source": "revit_api_symbol_raster_memory_cache_set",
       "target": "revit_api_symbol_raster_is_numeric"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L68",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_safe_int_element_id"
     },
     {
       "relation": "calls",
@@ -16838,16 +17260,6 @@
       "target": "revit_api_symbol_raster_safe_int_element_id"
     },
     {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L81",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_sanitize_path_component"
-    },
-    {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
@@ -16868,16 +17280,6 @@
       "confidence_score": 1.0,
       "source": "revit_api_symbol_raster_retained_png_path",
       "target": "revit_api_symbol_raster_sanitize_path_component"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L87",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_safe_type_sig_parts"
     },
     {
       "relation": "calls",
@@ -16924,16 +17326,6 @@
       "target": "revit_api_symbol_raster_safe_type_sig_parts"
     },
     {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L100",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_extract_type_id_int"
-    },
-    {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
@@ -16943,16 +17335,6 @@
       "confidence_score": 1.0,
       "source": "revit_api_symbol_raster_symbol_cache_key",
       "target": "revit_api_symbol_raster_extract_type_id_int"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L117",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_is_line_based_family_instance"
     },
     {
       "relation": "calls",
@@ -16977,16 +17359,6 @@
       "target": "revit_api_symbol_raster_is_line_based_family_instance"
     },
     {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L128",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_document_identity"
-    },
-    {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
@@ -17009,16 +17381,6 @@
       "target": "revit_api_symbol_raster_document_identity"
     },
     {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L146",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_document_cache_key"
-    },
-    {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
@@ -17028,16 +17390,6 @@
       "confidence_score": 1.0,
       "source": "revit_api_symbol_raster_get_drafting_view_family_type_id",
       "target": "revit_api_symbol_raster_document_cache_key"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L155",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_increment_doc_lookup_stat"
     },
     {
       "relation": "calls",
@@ -17051,26 +17403,6 @@
       "target": "revit_api_symbol_raster_increment_doc_lookup_stat"
     },
     {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L160",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_document_lookup_debug_snapshot"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L165",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_symbol_cache_key"
-    },
-    {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
@@ -17080,16 +17412,6 @@
       "confidence_score": 1.0,
       "source": "revit_api_symbol_raster_build_symbol_instance_context",
       "target": "revit_api_symbol_raster_symbol_cache_key"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L192",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_cache_file_path"
     },
     {
       "relation": "calls",
@@ -17103,16 +17425,6 @@
       "target": "revit_api_symbol_raster_cache_file_path"
     },
     {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L199",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_retained_png_path"
-    },
-    {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
@@ -17122,16 +17434,6 @@
       "confidence_score": 1.0,
       "source": "revit_api_symbol_raster_collect_canonical_points_for_context",
       "target": "revit_api_symbol_raster_retained_png_path"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L206",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_retain_debug_artifacts_enabled"
     },
     {
       "relation": "calls",
@@ -17145,16 +17447,6 @@
       "target": "revit_api_symbol_raster_retain_debug_artifacts_enabled"
     },
     {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L213",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_read_cache_entry"
-    },
-    {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
@@ -17164,26 +17456,6 @@
       "confidence_score": 1.0,
       "source": "revit_api_symbol_raster_collect_canonical_points_for_context",
       "target": "revit_api_symbol_raster_read_cache_entry"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L226",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_cache_lookup_diag_payload"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L250",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_is_numeric"
     },
     {
       "relation": "calls",
@@ -17208,16 +17480,6 @@
       "target": "revit_api_symbol_raster_is_numeric"
     },
     {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L254",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_is_points_payload_valid"
-    },
-    {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
@@ -17227,16 +17489,6 @@
       "confidence_score": 1.0,
       "source": "revit_api_symbol_raster_validate_cache_entry",
       "target": "revit_api_symbol_raster_is_points_payload_valid"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L265",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_validate_cache_entry"
     },
     {
       "relation": "calls",
@@ -17250,16 +17502,6 @@
       "target": "revit_api_symbol_raster_validate_cache_entry"
     },
     {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L307",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_write_cache_entry"
-    },
-    {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
@@ -17269,16 +17511,6 @@
       "confidence_score": 1.0,
       "source": "revit_api_symbol_raster_collect_canonical_points_for_context",
       "target": "revit_api_symbol_raster_write_cache_entry"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L320",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_png_unfilter"
     },
     {
       "relation": "calls",
@@ -17292,16 +17524,6 @@
       "target": "revit_api_symbol_raster_png_unfilter"
     },
     {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L364",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_png_to_luminance"
-    },
-    {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
@@ -17311,16 +17533,6 @@
       "confidence_score": 1.0,
       "source": "revit_api_symbol_raster_collect_canonical_points_for_context",
       "target": "revit_api_symbol_raster_png_to_luminance"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L431",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_foreground_edge_pixels"
     },
     {
       "relation": "calls",
@@ -17345,26 +17557,6 @@
       "target": "revit_api_symbol_raster_foreground_edge_pixels"
     },
     {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L450",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_edge_pixels"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L461",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_component_angular_subsample"
-    },
-    {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
@@ -17374,16 +17566,6 @@
       "confidence_score": 1.0,
       "source": "revit_api_symbol_raster_hough_endpoints",
       "target": "revit_api_symbol_raster_component_angular_subsample"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L481",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_hough_endpoints"
     },
     {
       "relation": "calls",
@@ -17397,16 +17579,6 @@
       "target": "revit_api_symbol_raster_hough_endpoints"
     },
     {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L594",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_instance_pose_in_view_2d"
-    },
-    {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
@@ -17418,16 +17590,6 @@
       "target": "revit_api_symbol_raster_instance_pose_in_view_2d"
     },
     {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L611",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_actual_instance_length_ft"
-    },
-    {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
@@ -17437,16 +17599,6 @@
       "confidence_score": 1.0,
       "source": "revit_api_symbol_raster_build_symbol_instance_context",
       "target": "revit_api_symbol_raster_actual_instance_length_ft"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L624",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_build_symbol_instance_context"
     },
     {
       "relation": "calls",
@@ -17469,16 +17621,6 @@
       "confidence_score": 1.0,
       "source": "revit_api_symbol_raster_collect_raster_points_for_view",
       "target": "revit_api_symbol_raster_build_symbol_instance_context"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L685",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_collect_canonical_points_for_context"
     },
     {
       "relation": "calls",
@@ -17569,16 +17711,6 @@
       "target": "revit_api_symbol_raster_collect_canonical_points_for_context"
     },
     {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L954",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_apply_canonical_instance_transform"
-    },
-    {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
@@ -17601,56 +17733,6 @@
       "target": "revit_api_symbol_raster_apply_canonical_instance_transform"
     },
     {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L980",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_obb_paper_inches"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L995",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_export_pixel_size_from_obb_paper_inches"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L1016",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_export_temp_view_png"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L1160",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_cleanup_export_tmp_dir"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L1171",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_start_transaction"
-    },
-    {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
@@ -17671,16 +17753,6 @@
       "confidence_score": 1.0,
       "source": "revit_api_symbol_raster_scoped_transaction_init",
       "target": "revit_api_symbol_raster_start_transaction"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L1182",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_scoped_transaction"
     },
     {
       "relation": "calls",
@@ -17724,16 +17796,6 @@
       "target": "revit_api_symbol_raster_scoped_transaction_init"
     },
     {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L1200",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_get_drafting_view_family_type_id"
-    },
-    {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
@@ -17743,16 +17805,6 @@
       "confidence_score": 1.0,
       "source": "revit_api_symbol_raster_create_fresh_view_with_symbol",
       "target": "revit_api_symbol_raster_get_drafting_view_family_type_id"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L1232",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_suppress_filled_region_patterns"
     },
     {
       "relation": "calls",
@@ -17774,46 +17826,6 @@
       "confidence_score": 1.0,
       "source": "revit_api_symbol_raster_rationale_1233",
       "target": "revit_api_symbol_raster_suppress_filled_region_patterns"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L1325",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_create_fresh_view_with_symbol"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L1468",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_delete_temp_view"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L1485",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_collect_points_for_element"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "src/dse/revit_api/symbol_raster.py",
-      "source_location": "L1509",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "agents_symbol_raster",
-      "target": "revit_api_symbol_raster_collect_raster_points_for_view"
     },
     {
       "relation": "rationale_for",
@@ -22798,8 +22810,28 @@
       "weight": 1.0,
       "source": "harness_verification_note_md",
       "target": "harness_verification_note_golden_compare"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/dse/pipelines/search.py",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "agents_find_similar_views",
+      "target": "agents_search"
+    },
+    {
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "src/dse/pipelines/search.py",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "agents_find_similar_views",
+      "target": "agents_symbol_raster_pipeline"
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "6ef4d760b91a5dfe423baba31429be7b56608b0c"
+  "built_at_commit": "1a1ea6d8e35532c1b164aec8f2144ddce2f825e9"
 }
