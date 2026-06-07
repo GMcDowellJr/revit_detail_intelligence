@@ -1,18 +1,30 @@
-name: graphify
+name: Rebuild Knowledge Graph
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '0 4 * * 1'  # every Monday at 4am UTC
 
 permissions:
   contents: write
 
 jobs:
-  build-and-publish:
+  graphify:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+    env:
+      OLLAMA_BASE_URL: https://openrouter.ai/api/v1
+      OLLAMA_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      OLLAMA_MODEL: openai/gpt-4o-mini
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
@@ -20,21 +32,30 @@ jobs:
         run: |
           pip install "git+https://github.com/safishamsi/graphify.git@v8" openai
 
-      - name: Build knowledge graph
-        env:
-          OLLAMA_BASE_URL: https://openrouter.ai/api/v1
-          OLLAMA_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          OLLAMA_MODEL: openai/gpt-4o-mini
-        run: graphify . --no-viz --backend ollama
+      - name: Merge .gitignore into .graphifyignore
+        run: |
+          [ -f .gitignore ] && cat .gitignore >> .graphifyignore || true
 
-      - name: Export HTML
-        env:
-          OLLAMA_BASE_URL: https://openrouter.ai/api/v1
-          OLLAMA_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          OLLAMA_MODEL: openai/gpt-4o-mini
-        run: graphify export html
+      - name: Rebuild knowledge graph
+        run: |
+          graphify . --no-viz --backend ollama
 
-      - name: Publish to GitHub Pages
+      - name: Commit graph to main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f graphify-out/graph.json
+          git add -f graphify-out/cost.json 2>/dev/null || true
+          git add -f graphify-out/manifest.json 2>/dev/null || true
+          git add -f graphify-out/GRAPH_REPORT.md 2>/dev/null || true
+          git diff --cached --quiet || git commit -m "chore: update knowledge graph [skip ci]"
+          git push origin main
+
+      - name: Generate HTML visualization
+        run: |
+          graphify export html
+
+      - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
