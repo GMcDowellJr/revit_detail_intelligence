@@ -4,8 +4,8 @@
   "graph": {
     "hyperedges": [
       {
-        "id": "search_pipeline",
-        "label": "Search Pipeline Components",
+        "id": "dse_pipeline_cache",
+        "label": "DSE Pipeline Cache",
         "nodes": [
           "src_dse_pipelines_search_find_similar_views",
           "src_dse_cache_",
@@ -2621,15 +2621,6 @@
       "id": "src_dse_ranking_stage2_rerank_py_object"
     },
     {
-      "label": "__init__.py",
-      "file_type": "code",
-      "source_file": "src/dse/revit_api/__init__.py",
-      "source_location": "L1",
-      "community": 47,
-      "norm_label": "__init__.py",
-      "id": "src_dse_revit_api_init"
-    },
-    {
       "label": "collect.py",
       "file_type": "code",
       "source_file": "src/dse/revit_api/collect.py",
@@ -3696,7 +3687,7 @@
       "file_type": "code",
       "source_file": "tests/conftest.py",
       "source_location": "L1",
-      "community": 48,
+      "community": 47,
       "norm_label": "conftest.py",
       "id": "tests_conftest"
     },
@@ -4641,7 +4632,7 @@
       "file_type": "code",
       "source_file": "tests/test_placeholder.py",
       "source_location": "L1",
-      "community": 49,
+      "community": 48,
       "norm_label": "test_placeholder.py",
       "id": "tests_test_placeholder"
     },
@@ -20534,8 +20525,8 @@
   ],
   "hyperedges": [
     {
-      "id": "search_pipeline",
-      "label": "Search Pipeline Components",
+      "id": "dse_pipeline_cache",
+      "label": "DSE Pipeline Cache",
       "nodes": [
         "src_dse_pipelines_search_find_similar_views",
         "src_dse_cache_",
@@ -20547,5 +20538,5 @@
       "source_file": "src/dse/pipelines/search.py"
     }
   ],
-  "built_at_commit": "88535d628a358eb938053ef020ae8ea7b976314c"
+  "built_at_commit": "390392b2a98f7b421e2e47e0beded27681b1af40"
 }
