@@ -983,41 +983,8 @@
       "why": "inferred connection - not explicitly stated in source; connects across different repos/directories; bridges separate communities; semantically similar concepts with no structural link"
     }
   ],
-  "questions": [
-    {
-      "type": "bridge_node",
-      "question": "Why does `_safe_type_sig_parts()` connect `symbol_raster.py` to `dynamo_view_similarity_legacy.py`?",
-      "why": "High betweenness centrality (0.123) - this node is a cross-community bridge."
-    },
-    {
-      "type": "bridge_node",
-      "question": "Why does `type_signature()` connect `dynamo_view_similarity_legacy.py` to `symbol_raster.py`?",
-      "why": "High betweenness centrality (0.122) - this node is a cross-community bridge."
-    },
-    {
-      "type": "bridge_node",
-      "question": "Why does `ViewFeatures` connect `dynamo_view_similarity_legacy.py` to `symbol_cache.py`?",
-      "why": "High betweenness centrality (0.069) - this node is a cross-community bridge."
-    },
-    {
-      "type": "verify_inferred",
-      "question": "Are the 4 inferred relationships involving `str` (e.g. with `ViewFeatureBundle` and `ViewPresentationSummary`) actually correct?",
-      "why": "`str` has 4 INFERRED edges - model-reasoned connections that need verification."
-    },
-    {
-      "type": "verify_inferred",
-      "question": "Are the 6 inferred relationships involving `IndexDiagnosticAccumulator` (e.g. with `test_finalize_cache_temperature_summary()` and `test_flush_view_record_appends_across_calls()`) actually correct?",
-      "why": "`IndexDiagnosticAccumulator` has 6 INFERRED edges - model-reasoned connections that need verification."
-    },
-    {
-      "type": "isolated_nodes",
-      "question": "What connects `Usage`, `Part A - Structural extraction for code files`, `Part C - Merge AST + semantic into final extraction` to the rest of the system?",
-      "why": "90 weakly-connected nodes found - possible documentation gaps or missing edges."
-    },
-    {
-      "type": "low_cohesion",
-      "question": "Should `view_feature_cache.py` be split into smaller, more focused modules?",
-      "why": "Cohesion score 0.08819538670284939 - nodes in this community are weakly interconnected."
-    }
-  ]
+  "tokens": {
+    "input": 36883,
+    "output": 390
+  }
 }
