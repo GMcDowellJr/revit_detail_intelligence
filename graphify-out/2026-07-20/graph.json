@@ -7668,10 +7668,9 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 38,
-      "norm_label": "cache",
       "id": "src_dse_cache_",
-      "community_name": "find_similar_views"
+      "community": 38,
+      "norm_label": "cache"
     },
     {
       "label": "symbol_raster_pipeline",
@@ -7682,10 +7681,9 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 38,
-      "norm_label": "symbol_raster_pipeline",
       "id": "src_revit_api_symbol_raster_symbol_raster_pipeline",
-      "community_name": "find_similar_views"
+      "community": 38,
+      "norm_label": "symbol_raster_pipeline"
     }
   ],
   "links": [
