@@ -1005,7 +1005,7 @@
       "source_location": "L1",
       "community": 45,
       "norm_label": "dse/__init__.py",
-      "community_name": "dse/__init__.py",
+      "community_name": "__init__.py",
       "id": "src_dse_init"
     },
     {
@@ -1015,7 +1015,7 @@
       "source_location": "L1",
       "community": 43,
       "norm_label": "cache/__init__.py",
-      "community_name": "cache/__init__.py",
+      "community_name": "__init__.py",
       "id": "src_dse_cache_init"
     },
     {
@@ -1715,7 +1715,7 @@
       "source_location": "L1",
       "community": 44,
       "norm_label": "diagnostics/__init__.py",
-      "community_name": "diagnostics/__init__.py",
+      "community_name": "__init__.py",
       "id": "src_dse_diagnostics_init"
     },
     {
@@ -2605,7 +2605,7 @@
       "source_location": "L1",
       "community": 46,
       "norm_label": "pipelines/__init__.py",
-      "community_name": "pipelines/__init__.py",
+      "community_name": "__init__.py",
       "id": "src_dse_pipelines_init"
     },
     {
@@ -5215,7 +5215,7 @@
       "source_location": "L1",
       "community": 10,
       "norm_label": "test_search_index_and_cache_loading.py",
-      "community_name": "test_search_index_and_cache_loading.py",
+      "community_name": "view_feature_cache.py",
       "id": "tests_test_search_index_and_cache_loading"
     },
     {
@@ -5225,7 +5225,7 @@
       "source_location": "L11",
       "community": 10,
       "norm_label": "_install_revit_stubs()",
-      "community_name": "test_search_index_and_cache_loading.py",
+      "community_name": "view_feature_cache.py",
       "id": "tests_test_search_index_and_cache_loading_install_revit_stubs"
     },
     {
@@ -5235,7 +5235,7 @@
       "source_location": "L53",
       "community": 10,
       "norm_label": "_bundle()",
-      "community_name": "test_search_index_and_cache_loading.py",
+      "community_name": "view_feature_cache.py",
       "id": "tests_test_search_index_and_cache_loading_bundle"
     },
     {
@@ -5245,7 +5245,7 @@
       "source_location": "L79",
       "community": 10,
       "norm_label": "test_index_views_empty_input()",
-      "community_name": "test_search_index_and_cache_loading.py",
+      "community_name": "view_feature_cache.py",
       "id": "tests_test_search_index_and_cache_loading_test_index_views_empty_input"
     },
     {
@@ -5255,7 +5255,7 @@
       "source_location": "L88",
       "community": 10,
       "norm_label": "test_index_views_all_invalid()",
-      "community_name": "test_search_index_and_cache_loading.py",
+      "community_name": "view_feature_cache.py",
       "id": "tests_test_search_index_and_cache_loading_test_index_views_all_invalid"
     },
     {
@@ -5265,7 +5265,7 @@
       "source_location": "L97",
       "community": 10,
       "norm_label": "test_index_views_mixed_cache_hit_and_miss()",
-      "community_name": "test_search_index_and_cache_loading.py",
+      "community_name": "view_feature_cache.py",
       "id": "tests_test_search_index_and_cache_loading_test_index_views_mixed_cache_hit_and_miss"
     },
     {
@@ -5275,7 +5275,7 @@
       "source_location": "L123",
       "community": 10,
       "norm_label": "test_sidecar_not_rewritten_on_hit_disk()",
-      "community_name": "test_search_index_and_cache_loading.py",
+      "community_name": "view_feature_cache.py",
       "id": "tests_test_search_index_and_cache_loading_test_sidecar_not_rewritten_on_hit_disk"
     },
     {
@@ -5285,7 +5285,7 @@
       "source_location": "L149",
       "community": 10,
       "norm_label": "test_sidecar_written_on_rebuilt()",
-      "community_name": "test_search_index_and_cache_loading.py",
+      "community_name": "view_feature_cache.py",
       "id": "tests_test_search_index_and_cache_loading_test_sidecar_written_on_rebuilt"
     },
     {
@@ -5295,7 +5295,7 @@
       "source_location": "L182",
       "community": 10,
       "norm_label": "test_index_jsonl_truncated_at_start_of_run()",
-      "community_name": "test_search_index_and_cache_loading.py",
+      "community_name": "view_feature_cache.py",
       "id": "tests_test_search_index_and_cache_loading_test_index_jsonl_truncated_at_start_of_run"
     },
     {
@@ -5305,7 +5305,7 @@
       "source_location": "L221",
       "community": 10,
       "norm_label": "test_index_views_writes_doc_scoped_cache_files()",
-      "community_name": "test_search_index_and_cache_loading.py",
+      "community_name": "view_feature_cache.py",
       "id": "tests_test_search_index_and_cache_loading_test_index_views_writes_doc_scoped_cache_files"
     },
     {
@@ -5315,7 +5315,7 @@
       "source_location": "L251",
       "community": 10,
       "norm_label": "test_index_views_counts_preview_failures()",
-      "community_name": "test_search_index_and_cache_loading.py",
+      "community_name": "view_feature_cache.py",
       "id": "tests_test_search_index_and_cache_loading_test_index_views_counts_preview_failures"
     },
     {
@@ -5325,7 +5325,7 @@
       "source_location": "L280",
       "community": 10,
       "norm_label": "test_index_views_counts_preview_failures_when_generate_returns_none()",
-      "community_name": "test_search_index_and_cache_loading.py",
+      "community_name": "view_feature_cache.py",
       "id": "tests_test_search_index_and_cache_loading_test_index_views_counts_preview_failures_when_generate_returns_none"
     },
     {
@@ -5335,7 +5335,7 @@
       "source_location": "L306",
       "community": 10,
       "norm_label": "test_build_state_context_passes_collected_elements_to_symbol_raster()",
-      "community_name": "test_search_index_and_cache_loading.py",
+      "community_name": "view_feature_cache.py",
       "id": "tests_test_search_index_and_cache_loading_test_build_state_context_passes_collected_elements_to_symbol_raster"
     },
     {
@@ -5345,7 +5345,7 @@
       "source_location": "L358",
       "community": 10,
       "norm_label": "test_index_views_jsonl_includes_per_view_symbol_perf_and_cache_temperature()",
-      "community_name": "test_search_index_and_cache_loading.py",
+      "community_name": "view_feature_cache.py",
       "id": "tests_test_search_index_and_cache_loading_test_index_views_jsonl_includes_per_view_symbol_perf_and_cache_temperature"
     },
     {
@@ -5355,7 +5355,7 @@
       "source_location": "L442",
       "community": 10,
       "norm_label": "test_extract_bundle_for_index_delegates_without_compat_shim()",
-      "community_name": "test_search_index_and_cache_loading.py",
+      "community_name": "view_feature_cache.py",
       "id": "tests_test_search_index_and_cache_loading_test_extract_bundle_for_index_delegates_without_compat_shim"
     },
     {
@@ -5365,7 +5365,7 @@
       "source_location": "L471",
       "community": 10,
       "norm_label": "test_index_views_writes_doc_scoped_cache_without_legacy_entry()",
-      "community_name": "test_search_index_and_cache_loading.py",
+      "community_name": "view_feature_cache.py",
       "id": "tests_test_search_index_and_cache_loading_test_index_views_writes_doc_scoped_cache_without_legacy_entry"
     },
     {
@@ -5375,7 +5375,7 @@
       "source_location": "L496",
       "community": 10,
       "norm_label": "test_index_views_second_run_hits_disk_from_doc_scoped_cache()",
-      "community_name": "test_search_index_and_cache_loading.py",
+      "community_name": "view_feature_cache.py",
       "id": "tests_test_search_index_and_cache_loading_test_index_views_second_run_hits_disk_from_doc_scoped_cache"
     },
     {
@@ -5385,7 +5385,7 @@
       "source_location": "L521",
       "community": 10,
       "norm_label": "test_load_all_cached_bundles_empty_dir()",
-      "community_name": "test_search_index_and_cache_loading.py",
+      "community_name": "view_feature_cache.py",
       "id": "tests_test_search_index_and_cache_loading_test_load_all_cached_bundles_empty_dir"
     },
     {
@@ -5395,7 +5395,7 @@
       "source_location": "L527",
       "community": 10,
       "norm_label": "test_load_all_cached_bundles_skips_corrupt_and_returns_valid()",
-      "community_name": "test_search_index_and_cache_loading.py",
+      "community_name": "view_feature_cache.py",
       "id": "tests_test_search_index_and_cache_loading_test_load_all_cached_bundles_skips_corrupt_and_returns_valid"
     },
     {
@@ -5405,7 +5405,7 @@
       "source_location": "L570",
       "community": 10,
       "norm_label": "test_load_all_cached_bundles_includes_doc_scoped_view_id_collisions()",
-      "community_name": "test_search_index_and_cache_loading.py",
+      "community_name": "view_feature_cache.py",
       "id": "tests_test_search_index_and_cache_loading_test_load_all_cached_bundles_includes_doc_scoped_view_id_collisions"
     },
     {
@@ -5415,7 +5415,7 @@
       "source_location": "L609",
       "community": 10,
       "norm_label": "test_find_similar_views_looks_up_scoped_candidate_preview()",
-      "community_name": "test_search_index_and_cache_loading.py",
+      "community_name": "view_feature_cache.py",
       "id": "tests_test_search_index_and_cache_loading_test_find_similar_views_looks_up_scoped_candidate_preview"
     },
     {
@@ -5425,7 +5425,7 @@
       "source_location": "L641",
       "community": 10,
       "norm_label": "test_find_similar_views_resolves_candidate_previews_after_top_n_trim()",
-      "community_name": "test_search_index_and_cache_loading.py",
+      "community_name": "view_feature_cache.py",
       "id": "tests_test_search_index_and_cache_loading_test_find_similar_views_resolves_candidate_previews_after_top_n_trim"
     },
     {
@@ -7558,7 +7558,7 @@
       "contributor": null,
       "community": 31,
       "norm_label": "find_similar_views",
-      "community_name": "Revit Detail Intelligence",
+      "community_name": "find_similar_views",
       "id": "src_dse_pipelines_search_find_similar_views"
     },
     {
@@ -7570,10 +7570,9 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 31,
-      "norm_label": "revit detail intelligence",
       "id": "agents_md",
-      "community_name": "Revit Detail Intelligence"
+      "community": 31,
+      "norm_label": "revit detail intelligence"
     },
     {
       "label": "cache",
@@ -7584,10 +7583,9 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 31,
-      "norm_label": "cache",
       "id": "src_dse_cache_",
-      "community_name": "Revit Detail Intelligence"
+      "community": 31,
+      "norm_label": "cache"
     },
     {
       "label": "symbol_raster_pipeline",
@@ -7598,10 +7596,9 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 31,
-      "norm_label": "symbol_raster_pipeline",
       "id": "src_revit_api_symbol_raster_symbol_raster_pipeline",
-      "community_name": "Revit Detail Intelligence"
+      "community": 31,
+      "norm_label": "symbol_raster_pipeline"
     }
   ],
   "links": [
