@@ -61,7 +61,7 @@
       "source_location": "L147",
       "community": 36,
       "norm_label": "step 3 - extract entities and relationships",
-      "community_name": "Step 3 - Extract entities and relationships",
+      "community_name": "graphify",
       "_origin": "ast",
       "id": "agents_skills_graphify_skill_md_graphify_skill_step_3_extract_entities_and_relationships"
     },
@@ -72,7 +72,7 @@
       "source_location": "L164",
       "community": 36,
       "norm_label": "part a - structural extraction for code files",
-      "community_name": "Step 3 - Extract entities and relationships",
+      "community_name": "graphify",
       "_origin": "ast",
       "id": "agents_skills_graphify_skill_md_graphify_skill_part_a_structural_extraction_for_code_files"
     },
@@ -83,7 +83,7 @@
       "source_location": "L332",
       "community": 36,
       "norm_label": "part c - merge ast + semantic into final extraction",
-      "community_name": "Step 3 - Extract entities and relationships",
+      "community_name": "graphify",
       "_origin": "ast",
       "id": "agents_skills_graphify_skill_md_graphify_skill_part_c_merge_ast_semantic_into_final_extraction"
     },
@@ -94,7 +94,7 @@
       "source_location": "L484",
       "community": 23,
       "norm_label": "step 9 - save manifest, update cost tracker, clean up, and report",
-      "community_name": "What You Must Do When Invoked",
+      "community_name": "graphify",
       "_origin": "ast",
       "id": "agents_skills_graphify_skill_md_graphify_skill_step_9_save_manifest_update_cost_tracker_clean_up_and_report"
     },
@@ -336,7 +336,7 @@
       "source_location": "L48",
       "community": 23,
       "norm_label": "what you must do when invoked",
-      "community_name": "What You Must Do When Invoked",
+      "community_name": "graphify",
       "_origin": "ast",
       "id": "copilot_skills_graphify_skill_md_graphify_skill_what_you_must_do_when_invoked"
     },
@@ -347,7 +347,7 @@
       "source_location": "L60",
       "community": 23,
       "norm_label": "step 0 - github repos and multi-path merge (only if a url or several paths)",
-      "community_name": "What You Must Do When Invoked",
+      "community_name": "graphify",
       "_origin": "ast",
       "id": "copilot_skills_graphify_skill_md_graphify_skill_step_0_github_repos_and_multi_path_merge_only_if_a_url_or_several_paths"
     },
@@ -358,7 +358,7 @@
       "source_location": "L64",
       "community": 23,
       "norm_label": "step 1 - ensure graphify is installed",
-      "community_name": "What You Must Do When Invoked",
+      "community_name": "graphify",
       "_origin": "ast",
       "id": "copilot_skills_graphify_skill_md_graphify_skill_step_1_ensure_graphify_is_installed"
     },
@@ -369,7 +369,7 @@
       "source_location": "L106",
       "community": 23,
       "norm_label": "step 2 - detect files",
-      "community_name": "What You Must Do When Invoked",
+      "community_name": "graphify",
       "_origin": "ast",
       "id": "copilot_skills_graphify_skill_md_graphify_skill_step_2_detect_files"
     },
@@ -380,7 +380,7 @@
       "source_location": "L143",
       "community": 23,
       "norm_label": "step 2.5 - video and audio (only if video files detected)",
-      "community_name": "What You Must Do When Invoked",
+      "community_name": "graphify",
       "_origin": "ast",
       "id": "copilot_skills_graphify_skill_md_graphify_skill_step_2_5_video_and_audio_only_if_video_files_detected"
     },
@@ -391,7 +391,7 @@
       "source_location": "L190",
       "community": 36,
       "norm_label": "part b - semantic extraction (parallel subagents)",
-      "community_name": "Step 3 - Extract entities and relationships",
+      "community_name": "graphify",
       "_origin": "ast",
       "id": "copilot_skills_graphify_skill_md_graphify_skill_part_b_semantic_extraction_parallel_subagents"
     },
@@ -402,7 +402,7 @@
       "source_location": "L369",
       "community": 23,
       "norm_label": "step 4 - build graph, cluster, analyze, generate outputs",
-      "community_name": "What You Must Do When Invoked",
+      "community_name": "graphify",
       "_origin": "ast",
       "id": "copilot_skills_graphify_skill_md_graphify_skill_step_4_build_graph_cluster_analyze_generate_outputs"
     },
@@ -413,7 +413,7 @@
       "source_location": "L421",
       "community": 23,
       "norm_label": "step 5 - label communities",
-      "community_name": "What You Must Do When Invoked",
+      "community_name": "graphify",
       "_origin": "ast",
       "id": "copilot_skills_graphify_skill_md_graphify_skill_step_5_label_communities"
     },
@@ -424,7 +424,7 @@
       "source_location": "L461",
       "community": 23,
       "norm_label": "step 6 - generate obsidian vault (opt-in) + html",
-      "community_name": "What You Must Do When Invoked",
+      "community_name": "graphify",
       "_origin": "ast",
       "id": "copilot_skills_graphify_skill_md_graphify_skill_step_6_generate_obsidian_vault_opt_in_html"
     },
@@ -435,7 +435,7 @@
       "source_location": "L481",
       "community": 23,
       "norm_label": "steps 6b-8 - wiki, neo4j, svg, graphml, mcp, benchmark (only on their flags)",
-      "community_name": "What You Must Do When Invoked",
+      "community_name": "graphify",
       "_origin": "ast",
       "id": "copilot_skills_graphify_skill_md_graphify_skill_steps_6b_8_wiki_neo4j_svg_graphml_mcp_benchmark_only_on_their_flags"
     },
@@ -644,7 +644,7 @@
       "source_location": "L1",
       "community": 38,
       "norm_label": "copilot-instructions.md",
-      "community_name": "GitHub Copilot Instructions \u2014 Revit Detail Intelligence",
+      "community_name": "graphify",
       "_origin": "ast",
       "id": "github_copilot_instructions"
     },
@@ -655,7 +655,7 @@
       "source_location": "L1",
       "community": 38,
       "norm_label": "github copilot instructions \u2014 revit detail intelligence",
-      "community_name": "GitHub Copilot Instructions \u2014 Revit Detail Intelligence",
+      "community_name": "graphify",
       "_origin": "ast",
       "id": "github_copilot_instructions_github_copilot_instructions_revit_detail_intelligence"
     },
@@ -666,7 +666,7 @@
       "source_location": "L3",
       "community": 38,
       "norm_label": "graph-first codebase navigation",
-      "community_name": "GitHub Copilot Instructions \u2014 Revit Detail Intelligence",
+      "community_name": "graphify",
       "_origin": "ast",
       "id": "github_copilot_instructions_graph_first_codebase_navigation"
     },
@@ -677,7 +677,7 @@
       "source_location": "L30",
       "community": 38,
       "norm_label": "project overview",
-      "community_name": "GitHub Copilot Instructions \u2014 Revit Detail Intelligence",
+      "community_name": "graphify",
       "_origin": "ast",
       "id": "github_copilot_instructions_project_overview"
     },
@@ -8273,7 +8273,7 @@
       "contributor": null,
       "community": 40,
       "norm_label": "find_similar_views",
-      "community_name": "cache",
+      "community_name": "Revit Detail Intelligence",
       "_origin": "semantic",
       "id": "src_dse_pipelines_search_find_similar_views"
     },
@@ -8288,7 +8288,7 @@
       "contributor": null,
       "community": 40,
       "norm_label": "revit detail intelligence",
-      "community_name": "cache",
+      "community_name": "Revit Detail Intelligence",
       "_origin": "semantic",
       "id": "agents_md"
     },
@@ -8303,7 +8303,7 @@
       "contributor": null,
       "community": 40,
       "norm_label": "cache",
-      "community_name": "cache",
+      "community_name": "Revit Detail Intelligence",
       "_origin": "semantic",
       "id": "src_dse_cache_"
     },
@@ -8316,10 +8316,9 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 16,
-      "norm_label": "graphify",
       "id": "graphify",
-      "community_name": "Graphify"
+      "community": 16,
+      "norm_label": "graphify"
     },
     {
       "label": "Usage",
@@ -8330,10 +8329,9 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 16,
-      "norm_label": "usage",
       "id": "graphify_usage",
-      "community_name": "Graphify"
+      "community": 16,
+      "norm_label": "usage"
     },
     {
       "label": "Query",
@@ -8344,10 +8342,9 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 16,
-      "norm_label": "query",
       "id": "graphify_query",
-      "community_name": "Graphify"
+      "community": 16,
+      "norm_label": "query"
     },
     {
       "label": "Update",
@@ -8358,10 +8355,9 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 16,
-      "norm_label": "update",
       "id": "graphify_update",
-      "community_name": "Graphify"
+      "community": 16,
+      "norm_label": "update"
     },
     {
       "label": "Export",
@@ -8372,10 +8368,9 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 16,
-      "norm_label": "export",
       "id": "graphify_export",
-      "community_name": "Graphify"
+      "community": 16,
+      "norm_label": "export"
     },
     {
       "label": "Add",
@@ -8386,10 +8381,9 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 16,
-      "norm_label": "add",
       "id": "graphify_add",
-      "community_name": "Graphify"
+      "community": 16,
+      "norm_label": "add"
     },
     {
       "label": "Watch",
@@ -8400,10 +8394,9 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 16,
-      "norm_label": "watch",
       "id": "graphify_watch",
-      "community_name": "Graphify"
+      "community": 16,
+      "norm_label": "watch"
     },
     {
       "label": "Cluster Only",
@@ -8414,10 +8407,9 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 16,
-      "norm_label": "cluster only",
       "id": "graphify_cluster_only",
-      "community_name": "Graphify"
+      "community": 16,
+      "norm_label": "cluster only"
     },
     {
       "label": "Neo4j",
@@ -8428,10 +8420,9 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 16,
-      "norm_label": "neo4j",
       "id": "graphify_neo4j",
-      "community_name": "Graphify"
+      "community": 16,
+      "norm_label": "neo4j"
     },
     {
       "label": "HTML",
@@ -8442,10 +8433,9 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 16,
-      "norm_label": "html",
       "id": "graphify_html",
-      "community_name": "Graphify"
+      "community": 16,
+      "norm_label": "html"
     },
     {
       "label": "SVG",
@@ -8456,10 +8446,9 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 16,
-      "norm_label": "svg",
       "id": "graphify_svg",
-      "community_name": "Graphify"
+      "community": 16,
+      "norm_label": "svg"
     },
     {
       "label": "GraphML",
@@ -8470,10 +8459,9 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 16,
-      "norm_label": "graphml",
       "id": "graphify_graphml",
-      "community_name": "Graphify"
+      "community": 16,
+      "norm_label": "graphml"
     },
     {
       "label": "MCP",
@@ -8484,10 +8472,9 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 16,
-      "norm_label": "mcp",
       "id": "graphify_mcp",
-      "community_name": "Graphify"
+      "community": 16,
+      "norm_label": "mcp"
     },
     {
       "label": "Wiki",
@@ -8498,10 +8485,9 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 16,
-      "norm_label": "wiki",
       "id": "graphify_wiki",
-      "community_name": "Graphify"
+      "community": 16,
+      "norm_label": "wiki"
     },
     {
       "label": "Community Detection",
@@ -8512,10 +8498,9 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 16,
-      "norm_label": "community detection",
       "id": "graphify_community_detection",
-      "community_name": "Graphify"
+      "community": 16,
+      "norm_label": "community detection"
     }
   ],
   "links": [
